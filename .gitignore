@@ -1,0 +1,24 @@
+# Session / tracking docs (kept local)
+COMMANDS.md
+MEMORY.md
+CHANGES.md
+TODOS.md
+PLAN.md
+.omc/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.binlog
+
+# Release artefacts
+release/
+*.zip
+*.tar.gz
+
+# Local secrets (never commit)
+appsettings.local.json

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/JevOutlook/JevOutlook.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/JevOutlook.Tests/JevOutlook.Tests.csproj" />
+  </Folder>
+</Solution>
