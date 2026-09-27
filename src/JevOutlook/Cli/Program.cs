@@ -1,7 +1,10 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using JevOutlook.Graph;
+using JevOutlook.Imap;
 using JevOutlook.Jev;
+using JevOutlook.Mail;
 using JevOutlook.Rules;
 using JevOutlook.Storage;
 using JevOutlook.Triage;
@@ -14,27 +17,36 @@ public static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.OutputEncoding = Encoding.UTF8;
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+        using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; cts.Cancel(); });
 
         try
         {
+            var migrated = await GraphTokenProvider.MigrateLegacyAsync(cts.Token);
+            if (migrated is not null) Console.Error.WriteLine($"Migrated the existing Microsoft sign-in into account '{migrated.Id}' ({migrated.Email}).");
+
             var command = args.Length > 0 ? args[0].ToLowerInvariant() : "help";
             var rest = args.Skip(1).ToArray();
             return command switch
             {
                 "help" or "--help" or "-h" => Help(),
                 "version" or "--version" => Version(),
+                "account" or "accounts" => await AccountAsync(rest, cts.Token),
                 "auth" => await AuthAsync(rest, cts.Token),
                 "config" => Config(rest),
                 "key" => await KeyAsync(rest, cts.Token),
                 "playbooks" => Playbooks(),
                 "rules" => Rules(rest),
+                "ui" or "dashboard" or "serve" => await UiAsync(rest, cts.Token),
+                "addin" => AddIn(rest),
+                "cleanup" => await CleanupAsync(rest, cts.Token),
                 "run" => await RunAsync(rest, cts.Token),
                 "continue" or "resume" => await ContinueAsync(rest, cts.Token),
-                "status" => Status(),
-                "clear-job" or "clear" => ClearJob(),
+                "status" => Status(rest),
+                "clear-job" or "clear" => ClearJob(rest),
                 _ => Unknown(command),
             };
         }
@@ -58,19 +70,31 @@ public static class Program
     private static int Help()
     {
         Console.WriteLine("""
-            jevoutlook — AI-assisted Outlook classification with Jev (TypeSafe) via OpenRouter
+            jevoutlook — AI-assisted mailbox classification with Jev (TypeSafe) via OpenRouter
+            Works with Microsoft 365 / Outlook.com (Graph), Gmail (IMAP + app password) and any IMAP server.
 
             USAGE
               jevoutlook <command> [options]
 
+            MAILBOXES
+              account add <email> --m365 [--tenant <id>] [--device-code]
+                                                 Microsoft 365 / Outlook.com (signs in right away)
+              account add <email> --gmail        Gmail over IMAP (asks for a Google app password)
+              account add <email> --imap <host[:port]> [--username <login>]
+                                                 Any IMAP server (asks for the mailbox password)
+              account list                       Configured mailboxes and their state
+              account test <id>                  Connect, show identity, folders and label support
+              account login <id> [--device-code] Sign in again (Microsoft 365)
+              account password <id>              Replace the stored password (IMAP / Gmail)
+              account remove <id>                Forget a mailbox (and its password / sign-in)
+              Most commands take --account <id|email>; it is optional with a single mailbox.
+
             SETUP
-              config set client-id <guid>        Entra ID app registration (client) id
+              config set client-id <guid>        Entra ID app registration (client) id (Microsoft 365 only)
               config set tenant-id <id>          common (default) | organizations | consumers | <tenant guid>
               config set provider <name>         openrouter (default) | typesafe
               config set device-code true|false  Use the device-code flow instead of a browser
               config show
-              auth [--device-code]               Sign in to Microsoft 365 / Outlook.com
-              auth --status | --logout
               key set <api-key>                  Store the OpenRouter (or TypeSafe) API key
               key test [<api-key>]               Send one tiny Jev request to verify the key
               key clear
@@ -84,20 +108,31 @@ public static class Program
               rules reset                        Restore the Universal inbox playbook
               rules path                         Print the rules file location
 
+            DASHBOARD
+              ui [--port 5177] [--https-port 5178] [--no-https] [--no-open]
+                                                 Local web dashboard for all mailboxes
+              addin manifest [--out file.xml]    Outlook add-in manifest (Microsoft 365 only, parked)
+
+            MAINTENANCE
+              cleanup remove-category <name> [--account <id>] [--dry-run] [--keep-master]
+                                                 Remove a label from every message carrying it, then delete it
+
             PROCESSING
-              run [options]                      Start a session (PREVIEW by default)
-                --scope inbox|all                Inbox (default) or the whole mailbox
+              run [options] [--account <id>]     Start a session (PREVIEW by default)
+                --all-accounts                   Run the same session on every configured mailbox, one after another
+                --scope inbox|all                Inbox (default) or the whole mailbox (Outlook, Gmail)
                 --include-read                   Also process read messages (default: unread only)
                 --limit N|all                    Number of messages (default 10)
-                --mode labels|labels-archive     Categories only (default) or archive eligible categories
-                --live                           Apply changes to Outlook (default: preview only)
-                --max-spend <usd>                Run budget (default 0.10)
+                --mode labels|labels-archive     Labels only (default) or archive eligible labels
+                --live                           Apply changes to the mailbox (default: preview only)
+                --max-spend <usd>                Run budget per mailbox (default 0.10)
                 --metadata-threshold <0.5-0.99>  Confidence required to trust the metadata pass (default 0.75)
                 --archive-threshold <0.5-0.999>  Confidence required to archive (default 0.93)
                 --yes                            Skip the confirmation for live archive runs
-              continue [--max-spend <usd>]       Resume a paused session (raise the budget if needed)
-              status                             Show the current session
-              clear-job                          Forget a finished session
+              continue [--max-spend <usd>] [--account <id>]
+                                                 Resume a paused session (raise the budget if needed)
+              status [--account <id>]            Show the current session(s)
+              clear-job [--account <id>]         Forget a finished session
 
             ENVIRONMENT
               OPENROUTER_API_KEY / JEV_API_KEY   API key (takes precedence over the stored key)
@@ -119,7 +154,169 @@ public static class Program
     }
 
     // ---------------------------------------------------------------------
-    // config / auth
+    // accounts
+    // ---------------------------------------------------------------------
+
+    private static async Task<int> AccountAsync(string[] args, CancellationToken ct)
+    {
+        var sub = args.Length > 0 ? args[0].ToLowerInvariant() : "list";
+        switch (sub)
+        {
+            case "list":
+            {
+                var accounts = AccountStore.Load();
+                if (accounts.Count == 0) { Console.WriteLine("No mailbox configured. Add one with: jevoutlook account add <email> --m365 | --gmail | --imap <host>"); return 0; }
+                foreach (var a in accounts)
+                {
+                    var job = new JobStore(a.Id).Load();
+                    var state = MailboxFactory.IsReady(a) ? "ready" : a.IsGraph ? "not signed in" : "no password";
+                    var where = a.IsImap ? $" · {a.Host}:{a.Port}" : string.Empty;
+                    Console.WriteLine($"{a.Id,-32} {a.Email,-36} {a.ProviderLabel,-13} {state}{where}{(job is null ? string.Empty : $" · session {job.Status}")}");
+                }
+                Console.WriteLine();
+                Console.WriteLine($"Passwords are kept in the {SecretStore.Backend}. State directory: {AppPaths.Root}");
+                return 0;
+            }
+            case "add":
+                return await AccountAddAsync(args.Skip(1).ToArray(), ct);
+            case "login":
+            {
+                var account = AccountStore.Resolve(args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null);
+                if (!account.IsGraph) throw new ArgumentException($"'{account.Id}' is an IMAP mailbox; use 'account password {account.Id}' to replace its password.");
+                await SignInGraphAsync(account, args.Contains("--device-code"), ct);
+                return 0;
+            }
+            case "password":
+            {
+                var account = AccountStore.Resolve(args.Length > 1 ? args[1] : null);
+                if (!account.IsImap) throw new ArgumentException($"'{account.Id}' is a Microsoft 365 mailbox; use 'account login {account.Id}'.");
+                var password = ReadPassword(account.Gmail ? "Gmail app password: " : "Mailbox password: ");
+                await VerifyImapAsync(account, password, ct);
+                SecretStore.Set(account.Id, password);
+                Console.WriteLine($"Password stored in the {SecretStore.Backend}.");
+                return 0;
+            }
+            case "test":
+            {
+                var account = AccountStore.Resolve(args.Length > 1 ? args[1] : null);
+                var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), Http, ct);
+                Console.WriteLine($"Identity      : {await mailbox.GetIdentityAsync(ct)}");
+                var caps = await mailbox.ConnectAsync(ct);
+                Console.WriteLine($"Provider      : {caps.ProviderName} ({caps.LabelNounPlural}; archive {(caps.CanArchive ? "available" : "unavailable")}; whole-mailbox scope {(caps.SupportsAllScope ? "supported" : "not supported")})");
+                Console.WriteLine($"Archive       : {caps.ArchiveDescription}");
+                Console.WriteLine($"Inbox         : {await mailbox.EstimateAsync("inbox", false, ct)} messages, {await mailbox.EstimateAsync("inbox", true, ct)} unread");
+                return 0;
+            }
+            case "remove":
+            {
+                if (args.Length < 2) throw new ArgumentException("Usage: jevoutlook account remove <id>");
+                var account = AccountStore.Require(args[1]);
+                if (new JobStore(account.Id).Load() is { Status: JobStatus.Running }) throw new InvalidOperationException("Stop processing on this mailbox before removing it.");
+                AccountStore.Remove(account.Id);
+                Console.WriteLine($"Mailbox '{account.Id}' removed (state directory, sign-in record and password deleted).");
+                return 0;
+            }
+            default:
+                throw new ArgumentException("Usage: jevoutlook account list | add <email> (--m365 | --gmail | --imap <host[:port]>) | login <id> | password <id> | test <id> | remove <id>");
+        }
+    }
+
+    private static async Task<int> AccountAddAsync(string[] args, CancellationToken ct)
+    {
+        var email = args.FirstOrDefault(a => !a.StartsWith("--") && a.Contains('@'))
+            ?? throw new ArgumentException("Usage: jevoutlook account add <email> --m365 | --gmail | --imap <host[:port]>");
+        var account = new MailAccount { Id = MailAccount.IdFor(email), Email = email.Trim() };
+
+        if (args.Contains("--m365") || args.Contains("--graph") || args.Contains("--outlook"))
+        {
+            account.Kind = AccountKind.Graph;
+            if (Option(args, "--tenant") is { Length: > 0 } tenant) account.TenantId = tenant;
+            AccountStore.Add(account);
+            try
+            {
+                await SignInGraphAsync(account, args.Contains("--device-code"), ct);
+            }
+            catch
+            {
+                AccountStore.Remove(account.Id);
+                throw;
+            }
+            return 0;
+        }
+
+        if (args.Contains("--gmail"))
+        {
+            account.Kind = AccountKind.Imap;
+            account.Gmail = true;
+            account.Host = "imap.gmail.com";
+            account.Port = 993;
+            Console.WriteLine("Gmail over IMAP needs a Google app password (2-step verification required): https://myaccount.google.com/apppasswords");
+        }
+        else if (Option(args, "--imap") is { Length: > 0 } host)
+        {
+            account.Kind = AccountKind.Imap;
+            var parts = host.Split(':', 2);
+            account.Host = parts[0].Trim();
+            account.Port = parts.Length > 1 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var port) ? port : 993;
+            if (Option(args, "--username") is { Length: > 0 } user && !string.Equals(user, email, StringComparison.OrdinalIgnoreCase)) account.Username = user;
+        }
+        else
+        {
+            throw new ArgumentException("Choose the mailbox type: --m365, --gmail or --imap <host[:port]>.");
+        }
+
+        var password = Option(args, "--password-stdin") is not null || args.Contains("--password-stdin")
+            ? (Console.In.ReadLine() ?? string.Empty).Trim()
+            : ReadPassword(account.Gmail ? "Gmail app password: " : "Mailbox password: ");
+        await VerifyImapAsync(account, password, ct);
+        AccountStore.Add(account);
+        SecretStore.Set(account.Id, password);
+        Console.WriteLine($"Mailbox '{account.Id}' added ({account.ProviderLabel}, {account.Host}:{account.Port}). Password stored in the {SecretStore.Backend}.");
+        return 0;
+    }
+
+    private static async Task VerifyImapAsync(MailAccount account, string password, CancellationToken ct)
+    {
+        if (password.Length == 0) throw new ArgumentException("The password is empty.");
+        var probe = new ImapMailbox(account, password);
+        Console.WriteLine($"Connecting to {account.Host}:{account.Port}…");
+        var identity = await probe.GetIdentityAsync(ct);
+        var caps = await probe.ConnectAsync(ct);
+        Console.WriteLine($"Connected as {identity} ({caps.ProviderName}; {caps.LabelNounPlural}; archive {(caps.CanArchive ? "available" : "unavailable")}).");
+    }
+
+    private static async Task SignInGraphAsync(MailAccount account, bool deviceCode, CancellationToken ct)
+    {
+        var config = AppConfig.Load();
+        Console.WriteLine($"Opening the Microsoft sign-in flow for {account.Email}…");
+        var mailbox = await MailboxFactory.SignInGraphAsync(account, config, Http, deviceCode, null, ct);
+        var accounts = AccountStore.Load();
+        var saved = accounts.First(a => a.Id == account.Id);
+        saved.Email = account.Email;
+        AccountStore.Save(accounts);
+        Console.WriteLine("Signed in as " + await mailbox.GetIdentityAsync(ct));
+    }
+
+    /// <summary>Hidden password prompt (echo off); falls back to a plain line when no terminal is attached.</summary>
+    private static string ReadPassword(string prompt)
+    {
+        Console.Write(prompt);
+        if (Console.IsInputRedirected) return (Console.ReadLine() ?? string.Empty).Trim();
+        var sb = new StringBuilder();
+        while (true)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.Key == ConsoleKey.Enter) { Console.WriteLine(); break; }
+            if (key.Key == ConsoleKey.Backspace) { if (sb.Length > 0) sb.Length--; continue; }
+            if (!char.IsControl(key.KeyChar)) sb.Append(key.KeyChar);
+        }
+        return sb.ToString().Trim();
+    }
+
+    private static MailAccount ResolveAccount(string[] args) => AccountStore.Resolve(Option(args, "--account"));
+
+    // ---------------------------------------------------------------------
+    // config / auth (compatibility)
     // ---------------------------------------------------------------------
 
     private static int Config(string[] args)
@@ -128,12 +325,14 @@ public static class Program
         if (args.Length == 0 || args[0] == "show")
         {
             Console.WriteLine($"State directory : {AppPaths.Root}");
+            Console.WriteLine($"Mailboxes       : {AccountStore.Load().Count} (jevoutlook account list)");
             Console.WriteLine($"Client id       : {config.ClientId ?? "(not set)"}");
             Console.WriteLine($"Tenant id       : {config.TenantId}");
             Console.WriteLine($"Provider        : {config.Provider} → {config.ResolvedEndpoint}");
             Console.WriteLine($"Model           : {config.ResolvedModel}");
             Console.WriteLine($"Device code     : {config.DeviceCode}");
             Console.WriteLine($"Stored API key  : {(string.IsNullOrEmpty(config.ApiKey) ? "no" : "yes")}");
+            Console.WriteLine($"Secrets         : {SecretStore.Backend}");
             return 0;
         }
         if (args[0] == "set" && args.Length >= 3)
@@ -158,39 +357,26 @@ public static class Program
         throw new ArgumentException("Usage: jevoutlook config show | config set <client-id|tenant-id|provider|endpoint|model|device-code> <value>");
     }
 
+    /// <summary>Kept for muscle memory: 'auth' is 'account login' on the selected (or only) mailbox.</summary>
     private static async Task<int> AuthAsync(string[] args, CancellationToken ct)
     {
-        var config = AppConfig.Load();
+        var account = ResolveAccount(args);
         if (args.Contains("--logout"))
         {
-            GraphTokenProvider.DeleteRecord();
-            Console.WriteLine("Signed out (saved authentication record removed).");
+            if (account.IsGraph) GraphTokenProvider.DeleteRecord(account.Id); else SecretStore.Delete(account.Id);
+            Console.WriteLine($"Signed out of '{account.Id}'.");
             return 0;
         }
         if (args.Contains("--status"))
         {
-            var record = await GraphTokenProvider.LoadRecordAsync(ct);
-            if (record is null) { Console.WriteLine("Not signed in. Run: jevoutlook auth"); return 1; }
-            var tokens = new GraphTokenProvider(config, record, config.DeviceCode);
-            var graph = new GraphMailClient(Http, tokens);
-            Console.WriteLine("Signed in as " + await graph.GetSignedInUserAsync(ct));
+            if (!MailboxFactory.IsReady(account)) { Console.WriteLine($"'{account.Id}' is not signed in. Run: jevoutlook account login {account.Id}"); return 1; }
+            var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), Http, ct);
+            Console.WriteLine("Signed in as " + await mailbox.GetIdentityAsync(ct));
             return 0;
         }
-
-        var provider = new GraphTokenProvider(config, null, args.Contains("--device-code"));
-        Console.WriteLine("Opening the Microsoft sign-in flow…");
-        var newRecord = await provider.SignInAsync(ct);
-        await GraphTokenProvider.SaveRecordAsync(newRecord, ct);
-        var client = new GraphMailClient(Http, provider);
-        Console.WriteLine("Signed in as " + await client.GetSignedInUserAsync(ct));
+        if (!account.IsGraph) throw new ArgumentException($"'{account.Id}' is an IMAP mailbox; use 'account password {account.Id}'.");
+        await SignInGraphAsync(account, args.Contains("--device-code"), ct);
         return 0;
-    }
-
-    private static async Task<GraphMailClient> ConnectGraphAsync(AppConfig config, CancellationToken ct)
-    {
-        var record = await GraphTokenProvider.LoadRecordAsync(ct)
-            ?? throw new InvalidOperationException("Not signed in to Microsoft 365 / Outlook.com. Run: jevoutlook auth");
-        return new GraphMailClient(Http, new GraphTokenProvider(config, record, config.DeviceCode));
     }
 
     // ---------------------------------------------------------------------
@@ -305,6 +491,75 @@ public static class Program
     }
 
     // ---------------------------------------------------------------------
+    // web dashboard
+    // ---------------------------------------------------------------------
+
+    private static async Task<int> UiAsync(string[] args, CancellationToken ct)
+    {
+        var port = (int)Number(args, "--port", 5177);
+        var httpsPort = (int)Number(args, "--https-port", 5178);
+        if (port is < 1 or > 65535 || httpsPort is < 1 or > 65535) throw new ArgumentException("Ports must be between 1 and 65535.");
+        await new Web.UiServer(Http).RunAsync(port, args.Contains("--no-https") ? null : httpsPort, openBrowser: !args.Contains("--no-open"), ct);
+        return 0;
+    }
+
+    /// <summary>Write the Outlook add-in manifest to release/ for sideloading.</summary>
+    private static int AddIn(string[] args)
+    {
+        if (args.Length == 0 || args[0] != "manifest") throw new ArgumentException("Usage: jevoutlook addin manifest [--https-port 5178] [--out <file.xml>]");
+        var httpsPort = (int)Number(args, "--https-port", 5178);
+        var output = Option(args, "--out") ?? Path.Combine(Directory.GetCurrentDirectory(), "release", "jevoutlook-manifest.xml");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        File.WriteAllText(output, Web.UiServer.BuildManifest(httpsPort));
+        Console.WriteLine($"Manifest written to {output}");
+        Console.WriteLine("Sideload it in Outlook: Get Add-ins → My add-ins → Add a custom add-in → Add from file. Keep 'jevoutlook ui' running.");
+        return 0;
+    }
+
+    // ---------------------------------------------------------------------
+    // maintenance
+    // ---------------------------------------------------------------------
+
+    private static async Task<int> CleanupAsync(string[] args, CancellationToken ct)
+    {
+        if (args.Length < 2 || args[0] != "remove-category" || string.IsNullOrWhiteSpace(args[1]))
+            throw new ArgumentException("Usage: jevoutlook cleanup remove-category <name> [--account <id>] [--dry-run] [--keep-master]");
+        var category = args[1].Trim();
+        var dryRun = args.Contains("--dry-run");
+        var mailbox = await MailboxFactory.OpenAsync(ResolveAccount(args), AppConfig.Load(), Http, ct);
+        await mailbox.ConnectAsync(ct);
+
+        var total = 0;
+        for (var rounds = 0; rounds < 500; rounds++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var found = await mailbox.FindMessagesWithLabelAsync(category, 100, ct);
+            if (found.Count == 0) break;
+            if (dryRun)
+            {
+                Console.WriteLine($"{found.Count}{(found.Count == 100 ? "+" : string.Empty)} message(s) carry “{category}”. Nothing changed (dry run).");
+                return 0;
+            }
+            var updates = found.Select(f => (f.Id, (IReadOnlyList<string>)f.Labels
+                .Where(c => !string.Equals(c, category, StringComparison.OrdinalIgnoreCase)).ToList())).ToList();
+            var outcome = await mailbox.ApplyLabelsAsync(updates, ct);
+            if (!outcome.Ok) throw new InvalidOperationException(outcome.Error);
+            total += found.Count;
+            Console.WriteLine($"Removed “{category}” from {total} message(s)…");
+            if (found.Count < 100) break;
+        }
+        Console.WriteLine(total == 0 ? $"No message carries “{category}”." : $"Done: “{category}” removed from {total} message(s).");
+
+        if (!dryRun && !args.Contains("--keep-master"))
+        {
+            Console.WriteLine(await mailbox.DeleteLabelAsync(category, ct)
+                ? $"“{category}” deleted from the label list."
+                : $"“{category}” was not in the label list.");
+        }
+        return 0;
+    }
+
+    // ---------------------------------------------------------------------
     // run / continue / status
     // ---------------------------------------------------------------------
 
@@ -323,11 +578,13 @@ public static class Program
         var config = AppConfig.Load();
         var apiKey = config.ResolveApiKey(Option(args, "--api-key"));
         var rules = RuleStore.Load();
+        var accounts = args.Contains("--all-accounts") ? AccountStore.Load() : [ResolveAccount(args)];
+        if (accounts.Count == 0) throw new InvalidOperationException("No mailbox is configured. Add one with: jevoutlook account add <email> …");
 
         if (!options.DryRun && options.Mode == RunMode.LabelsArchive && !args.Contains("--yes"))
         {
             var eligible = string.Join(", ", rules.Where(r => r.Spam).Select(r => r.Name));
-            Console.WriteLine($"LIVE run with archiving: messages classified as [{eligible}] with confidence ≥ {options.ArchiveThreshold.ToString("0.00", CultureInfo.InvariantCulture)} will be moved to the Archive folder.");
+            Console.WriteLine($"LIVE run with archiving on {string.Join(", ", accounts.Select(a => a.Email))}: messages classified as [{eligible}] with confidence ≥ {options.ArchiveThreshold.ToString("0.00", CultureInfo.InvariantCulture)} will be archived.");
             Console.Write("Type 'yes' to continue: ");
             if (!string.Equals(Console.ReadLine()?.Trim(), "yes", StringComparison.OrdinalIgnoreCase))
             {
@@ -336,18 +593,26 @@ public static class Program
             }
         }
 
-        var graph = await ConnectGraphAsync(config, ct);
-        var sink = new ConsoleSink();
-        var engine = new TriageEngine(graph, new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
+        var worst = 0;
+        foreach (var account in accounts)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (accounts.Count > 1) Console.WriteLine($"═══ {account.Email} ({account.ProviderLabel}) ═══");
+            var mailbox = await MailboxFactory.OpenAsync(account, config, Http, ct);
+            var sink = new ConsoleSink();
+            var engine = new TriageEngine(mailbox, new JobStore(account.Id), new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
 
-        Console.WriteLine($"{(options.DryRun ? "PREVIEW" : "LIVE")} · scope {options.Scope}{(options.UnreadOnly ? " (unread only)" : string.Empty)} · limit {(options.Limit is { } l ? l.ToString(CultureInfo.InvariantCulture) : "all")} · " +
-                          $"{(options.Mode == RunMode.LabelsArchive ? "categories + archive" : "categories only")} · budget ${options.MaxSpendUsd.ToString("0.00", CultureInfo.InvariantCulture)} · model {config.ResolvedModel}");
-        Console.WriteLine("Press Ctrl+C to pause safely at any time.");
+            Console.WriteLine($"{(options.DryRun ? "PREVIEW" : "LIVE")} · {account.Email} · scope {options.Scope}{(options.UnreadOnly ? " (unread only)" : string.Empty)} · limit {(options.Limit is { } l ? l.ToString(CultureInfo.InvariantCulture) : "all")} · " +
+                              $"{(options.Mode == RunMode.LabelsArchive ? "labels + archive" : "labels only")} · budget ${options.MaxSpendUsd.ToString("0.00", CultureInfo.InvariantCulture)} · model {config.ResolvedModel}");
+            Console.WriteLine("Press Ctrl+C to pause safely at any time.");
 
-        var job = await engine.StartAsync(options, rules, ct);
-        await engine.RunLoopAsync(job, ct);
-        ConsoleSink.PrintSummary(job);
-        return job.Status is JobStatus.Completed ? 0 : job.Status == JobStatus.Error ? 1 : 3;
+            var job = await engine.StartAsync(options, rules, ct);
+            await engine.RunLoopAsync(job, ct);
+            ConsoleSink.PrintSummary(job);
+            var code = job.Status is JobStatus.Completed ? 0 : job.Status == JobStatus.Error ? 1 : 3;
+            worst = Math.Max(worst, code);
+        }
+        return worst;
     }
 
     private static async Task<int> ContinueAsync(string[] args, CancellationToken ct)
@@ -358,31 +623,43 @@ public static class Program
             ? double.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture)
             : (double?)null;
 
-        var job = TriageEngine.Resume(newSpend);
-        var graph = await ConnectGraphAsync(config, ct);
+        var account = ResolveAccount(args);
+        var mailbox = await MailboxFactory.OpenAsync(account, config, Http, ct);
         var sink = new ConsoleSink();
-        var engine = new TriageEngine(graph, new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
-        Console.WriteLine($"Continuing session {job.Id} ({(job.DryRun ? "PREVIEW" : "LIVE")}). Press Ctrl+C to pause safely.");
+        var engine = new TriageEngine(mailbox, new JobStore(account.Id), new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
+        var job = engine.Resume(newSpend);
+        Console.WriteLine($"Continuing session {job.Id} on {account.Email} ({(job.DryRun ? "PREVIEW" : "LIVE")}). Press Ctrl+C to pause safely.");
         await engine.RunLoopAsync(job, ct);
         ConsoleSink.PrintSummary(job);
         return job.Status is JobStatus.Completed ? 0 : job.Status == JobStatus.Error ? 1 : 3;
     }
 
-    private static int Status()
+    private static int Status(string[] args)
     {
-        var job = JobStore.Load();
-        if (job is null) { Console.WriteLine("No processing session. Start one with: jevoutlook run"); return 0; }
-        ConsoleSink.PrintSummary(job);
-        if (job.Pending.Count > 0) Console.WriteLine($"  Pending       : {job.Pending.Count} message(s) checkpointed for the next batch");
+        var accounts = Option(args, "--account") is { } id ? [AccountStore.Require(id)] : AccountStore.Load();
+        if (accounts.Count == 0) { Console.WriteLine("No mailbox configured."); return 0; }
+        var any = false;
+        foreach (var account in accounts)
+        {
+            var job = new JobStore(account.Id).Load();
+            if (job is null) continue;
+            any = true;
+            Console.WriteLine($"═══ {account.Email} ({account.ProviderLabel}) ═══");
+            ConsoleSink.PrintSummary(job);
+            if (job.Pending.Count > 0) Console.WriteLine($"  Pending       : {job.Pending.Count} message(s) checkpointed for the next batch");
+        }
+        if (!any) Console.WriteLine("No processing session. Start one with: jevoutlook run");
         return 0;
     }
 
-    private static int ClearJob()
+    private static int ClearJob(string[] args)
     {
-        var job = JobStore.Load();
+        var account = ResolveAccount(args);
+        var store = new JobStore(account.Id);
+        var job = store.Load();
         if (job is { Status: JobStatus.Running }) throw new InvalidOperationException("Stop processing before clearing the session.");
-        JobStore.Delete();
-        Console.WriteLine("Session cleared.");
+        store.Delete();
+        Console.WriteLine($"Session cleared for {account.Email}.");
         return 0;
     }
 

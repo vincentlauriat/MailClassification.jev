@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using JevOutlook;
 using JevOutlook.Graph;
+using JevOutlook.Mail;
 using JevOutlook.Jev;
 using JevOutlook.Rules;
 

@@ -47,20 +47,32 @@ public static class AppConstants
     public const int GraphBatchRequestLimit = 20;
 
     /// <summary>
-    /// Adaptive read window expressed in messages in flight. Every request inside a
-    /// $batch counts individually against Outlook throttling (about 4 concurrent
-    /// requests per app × mailbox, and Graph itself fans a batch out 4 at a time), so
-    /// at most <see cref="GraphMaxConcurrentCalls"/> batch calls run in parallel and the
-    /// window never exceeds 2 batches of 20.
+    /// Adaptive read window expressed in messages in flight. Exchange Online enforces a
+    /// MailboxConcurrency limit of 4 requests per mailbox and Graph already fans a $batch
+    /// out 4 at a time, so exactly one $batch (20 requests) is in flight at any moment —
+    /// two concurrent batches were answered with 429 "ApplicationThrottled" (measured
+    /// 2026-09-24, Retry-After 8–9 s). The window therefore never exceeds one batch.
     /// </summary>
     public const int GraphInitialConcurrency = 20;
     public const int GraphMinConcurrency = 5;
-    public const int GraphMaxConcurrency = 40;
-    public const int GraphConcurrencyGrowth = 20;
-    public const int GraphMaxConcurrentCalls = 2;
+    public const int GraphMaxConcurrency = 20;
+    public const int GraphConcurrencyGrowth = 5;
+    public const int GraphMaxConcurrentCalls = 1;
     public const int GraphRetryDelayMs = 500;
-    public const int MaxGraphRetryDelayMs = 3000;
+    /// <summary>Reads honour the server's Retry-After up to this bound (Exchange often asks for 10–30 s).</summary>
+    public const int MaxGraphRetryDelayMs = 30000;
+    /// <summary>Transport-level retries of a single call.</summary>
     public const int NetworkRetries = 1;
+    /// <summary>Throttled reads inside a batch are retried this many times (window halved each time).</summary>
+    public const int GraphReadRetries = 3;
+
+    /// <summary>
+    /// Writes (category PATCH, archive move) are throttled much harder than reads by
+    /// Exchange Online: batches are sent one at a time and retried with the server's
+    /// Retry-After (exponential fallback), for longer than reads.
+    /// </summary>
+    public const int GraphWriteRetries = 5;
+    public const int MaxGraphWriteRetryDelayMs = 30000;
 
     // ----- Jev waves ------------------------------------------------------
 
@@ -76,9 +88,6 @@ public static class AppConstants
     public const int MaxSkippedMessageIds = 250;
 
     // ----- Outlook categories --------------------------------------------
-
-    /// <summary>Technical category applied to successfully processed messages.</summary>
-    public const string TechnicalTriagedCategory = "jev-triaged";
 
     /// <summary>Outlook master-category colour presets (preset0..preset24).</summary>
     public static readonly string[] CategoryColorPresets =

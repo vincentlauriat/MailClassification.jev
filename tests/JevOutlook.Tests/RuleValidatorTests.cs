@@ -34,10 +34,8 @@ public class RuleValidatorTests
     }
 
     [Fact]
-    public void Rejects_reserved_marker_separators_and_duplicates()
+    public void Rejects_separators_and_duplicates()
     {
-        Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize([new LabelRule("a", AppConstants.TechnicalTriagedCategory, "d", false)]));
-        Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize([new LabelRule("a", "JEV-TRIAGED", "d", false)]));
         Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize([new LabelRule("a", "a,b", "d", false)]));
         Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize([new LabelRule("a", "a;b", "d", false)]));
         Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize([new LabelRule("a", "Same", "d", false), new LabelRule("b", "same", "d", false)]));

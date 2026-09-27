@@ -7,8 +7,8 @@ public sealed class RuleValidationException(string message) : Exception(message)
 /// <summary>
 /// Validates user-created classification rules before they are saved or used
 /// for a run. Outlook categories are plain strings; the only technical
-/// constraints are the reserved processing marker, separator characters that
-/// Outlook clients use in category fields, and control characters.
+/// constraints are the separator characters that Outlook clients use in
+/// category fields, and control characters.
 /// </summary>
 public static class RuleValidator
 {
@@ -41,8 +41,6 @@ public static class RuleValidator
             if (description.Length > AppConstants.MaxRuleDescription)
                 throw new RuleValidationException($"Description for \"{name}\" is too long.");
 
-            if (string.Equals(name, AppConstants.TechnicalTriagedCategory, StringComparison.OrdinalIgnoreCase))
-                throw new RuleValidationException("Use a visible custom category name other than the internal processing marker.");
             if (ControlChars.IsMatch(name))
                 throw new RuleValidationException($"Category \"{name}\" contains control characters.");
             if (name.Contains(',') || name.Contains(';'))

@@ -11,11 +11,20 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <RollForward>Major</RollForward>
     <Version>0.1.0</Version>
-    <Description>AI-assisted Outlook classification with Jev (TypeSafe) via OpenRouter and Microsoft Graph.</Description>
+    <Description>Semantic classification of Outlook, Gmail and IMAP mailboxes with Jev (TypeSafe) via OpenRouter.</Description>
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.*" />
+    <PackageReference Include="MailKit" Version="4.18.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web/wwwroot/*" LogicalName="wwwroot/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

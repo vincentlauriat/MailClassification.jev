@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using JevOutlook.Graph;
+using JevOutlook.Mail;
 using JevOutlook.Rules;
 
 namespace JevOutlook.Jev;

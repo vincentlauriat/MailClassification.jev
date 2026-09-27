@@ -1,0 +1,178 @@
+/* ==========================================================================
+   base.css — socle commun des landing pages
+   version 1.0.4 — 2026-07-26
+   --------------------------------------------------------------------------
+   Ce fichier pose le plancher : tokens, typographie, accessibilité.
+   Il ne dessine aucune mise en page — chaque page garde la sienne.
+
+   Pour l'utiliser dans un autre projet : copier ce fichier dans son docs/
+   et le référencer avant le <style> de la page. Le seul token à redéfinir
+   est --accent (et --accent-soft), qui porte l'identité du projet.
+
+   Si tu modifies ce fichier, incrémente la version ci-dessus : elle permet
+   de repérer les copies périmées dans les autres repos.
+   ========================================================================== */
+
+:root{
+  /* Surfaces — noir légèrement froid, pour laisser les accents ressortir */
+  --bg:        #0a0c12;
+  --bg-lift:   #0e1119;
+  --surface:   #12151f;
+  --surface-2: #171b28;
+  --line:      #232838;
+  --line-soft: #1a1e2b;
+
+  /* Texte */
+  --txt:   #e8ecf5;
+  --muted: #8b93a7;
+  --faint: #7a8399;
+
+  /* Accent — redéfini par chaque projet */
+  --accent:      #5b8bff;
+  --accent-soft: rgba(91,139,255,.14);
+
+  /* Couleur du texte POSÉ SUR l'accent (bouton plein, pastille, skip link).
+     Les accents du corpus sont choisis pour être lisibles *en texte* sur fond
+     sombre : ils sont donc tous clairs, et du blanc dessus tombe entre 1.8:1
+     et 3.9:1 — illisible sur les 14 projets sans exception. Cette encre sombre
+     donne au pire 5.08:1 (TheNews, l'accent le plus foncé). Ne jamais écrire
+     `color:#fff` sur un fond d'accent : utiliser ce token. */
+  --on-accent:   #08090d;
+
+  /* Rythme */
+  --radius:    14px;
+  --radius-sm: 9px;
+  --gap:       20px;
+
+  /* Élévation par z-index nommés, plutôt qu'au jugé */
+  --z-nav: 20;
+  --z-top: 50;
+}
+
+/* Typographie
+   Une seule fonte chargée : JetBrains Mono, réservée aux relevés, labels et
+   métadonnées — c'est ce qui signe « instrument de mesure ». Le corps reste
+   en pile système : zéro requête supplémentaire, et le rendu natif macOS.
+
+   Les trois dernières familles de --font-sans ne servent qu'au chinois : le
+   navigateur descend la pile glyphe par glyphe, donc le latin est rendu par
+   les fontes système d'avant et n'est pas affecté. PingFang TC est natif
+   macOS/iOS, mais le corpus est aussi lu depuis Windows et Android — sans
+   Noto Sans TC / Microsoft JhengHei ces visiteurs tombent sur une fonte Han
+   arbitraire, souvent simplifiée. */
+:root{
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+               "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+
+body{
+  font-family:var(--font-sans);
+  background:var(--bg);
+  color:var(--txt);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+a{color:inherit;text-decoration:none}
+
+/* Titres : la personnalité vient du serrage et du poids, pas d'un dégradé */
+h1,h2,h3{line-height:1.12;letter-spacing:-.025em;font-weight:800}
+
+/* Relevés monospace — labels, métadonnées, valeurs */
+.mono{font-family:var(--font-mono);font-variant-ligatures:none}
+
+/* Les balises de code : sans cette règle, le navigateur leur applique sa
+   monospace par défaut et JetBrains Mono est chargée pour rien. */
+code,kbd,samp,pre{font-family:var(--font-mono)}
+.eyebrow{
+  font-family:var(--font-mono);
+  font-size:.7rem;font-weight:600;
+  text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent);
+}
+
+/* --- Bascule de langue : EN / FR / 中文（繁體） --------------------------- */
+
+/* Le contenu porte les trois variantes en dur ; c'est la classe posée sur
+   <body> par setLang() qui décide laquelle s'affiche. L'anglais est le défaut
+   nu : si le JS ne s'exécute pas, la page reste lisible en anglais plutôt que
+   d'afficher les trois langues empilées.
+
+   On n'écrit QUE des règles de masquage, jamais d'affichage : la variante
+   active garde ainsi le display que lui donne la mise en page de la page
+   (`.legend span{display:inline-flex}` par exemple). Une règle d'affichage
+   générique écraserait ces display locaux et casserait les alignements.
+
+   `!important` est ici légitime et nécessaire : c'est une bascule d'état, et
+   elle doit gagner contre n'importe quel sélecteur de mise en page. Sans lui,
+   un simple `.legend span` (0,0,1,1) bat `.fr` (0,0,1,0) et affiche les trois
+   langues empilées — c'est exactement ce qui s'est produit au premier essai. */
+body:not(.lang-fr) .fr{display:none !important}
+body:not(.lang-zh) .zh{display:none !important}
+body.lang-fr .en,body.lang-zh .en{display:none !important}
+
+/* Le serrage négatif des titres est calibré pour l'alphabet latin ; appliqué
+   à des idéogrammes il les fait se chevaucher. Le chinois n'a pas non plus
+   d'espaces entre les mots : sans `line-break:strict` le navigateur coupe
+   n'importe où, y compris avant une ponctuation qui ne doit jamais ouvrir
+   une ligne. */
+body.lang-zh h1,body.lang-zh h2,body.lang-zh h3{letter-spacing:normal}
+body.lang-zh{line-break:strict;word-break:normal}
+
+/* Un idéogramme occupe une pleine chasse, là où une lettre latine en occupe
+   grosso modo la moitié : à taille égale, un titre chinois est deux fois plus
+   large que sa traduction anglaise et déborde de sa colonne, en abandonnant
+   un caractère isolé sur la dernière ligne. On redescend donc les titres,
+   une seule fois ici plutôt qu'en rognant les traductions page par page.
+   La valeur est absolue et non relative : `em` se calculerait sur <body>,
+   pas sur le clamp que chaque page donne à son h1. */
+body.lang-zh h1{font-size:clamp(28px,4.2vw,44px)}
+body.lang-zh h2{font-size:clamp(22px,3vw,32px)}
+
+/* La plupart des pages redéfinissent `body{font:16px/1.65 -apple-system,…}`
+   dans leur propre <style>, chargé après le socle : leur pile écrase alors
+   --font-sans et les familles chinoises n'arrivent jamais. `body.lang-zh`
+   (0,0,1,1) repasse devant ce `body` (0,0,0,1) — et seulement en chinois,
+   donc le rendu latin des deux autres langues reste celui de la page.
+   On ne rétablit que la famille : la taille et l'interligne du raccourci
+   `font:` de la page restent en place. */
+body.lang-zh{font-family:var(--font-sans)}
+
+/* --- Plancher d'accessibilité ------------------------------------------- */
+
+/* Focus lisible sur fond sombre. Le ring natif existe déjà mais se perd
+   sur ces surfaces : on le renforce sans jamais le supprimer. */
+:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:3px;
+  border-radius:4px;
+}
+
+/* Corps lisible sur mobile : jamais sous 16px */
+@media (max-width:600px){ body{font-size:16px} }
+
+/* Cibles tactiles : 44px minimum sur les actions principales */
+.btn,.tap{min-height:44px;display:inline-flex;align-items:center;cursor:pointer}
+
+/* Respect de la préférence système de mouvement réduit */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+
+/* Lien d'évitement — visible uniquement au clavier */
+.skip{
+  position:absolute;left:-9999px;top:0;z-index:var(--z-top);
+  background:var(--accent);color:var(--on-accent);padding:10px 16px;border-radius:0 0 var(--radius-sm) 0;
+  font-weight:700;
+}
+.skip:focus{left:0}

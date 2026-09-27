@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jevOutlook — Semantic classification of Outlook, Gmail and IMAP mailboxes with Jev</title>
+<meta name="description" content="jevOutlook classifies the messages of your Outlook / Microsoft 365, Gmail and IMAP mailboxes with Jev, TypeSafe's decision model: one category per message written back as an Outlook category, Gmail label or IMAP keyword. Preview by default, a hard cost cap, checkpointed runs, everything on your machine. Free and open source (MIT), C# / .NET 10.">
+<meta property="og:title" content="jevOutlook — your mailboxes sorted by what messages mean">
+<meta property="og:description" content="Outlook, Gmail and IMAP mailboxes classified with Jev (TypeSafe): one category per message, preview by default, cost-capped, local. Free and open source.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://vincentlauriat.github.io/MailClassification.jev/">
+<meta property="og:image" content="https://vincentlauriat.github.io/MailClassification.jev/assets/icon-1024.png">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#0d0e11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="apple-touch-icon" href="assets/icon-256.png">
+<link rel="canonical" href="https://vincentlauriat.github.io/MailClassification.jev/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="assets/base.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "jevOutlook",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "macOS, Windows, Linux (.NET 10)",
+  "description": "Semantic classification of Outlook / Microsoft 365, Gmail and IMAP mailboxes with Jev (TypeSafe): one category per message, preview by default, a per-run cost cap, checkpointed and resumable sessions, no hosted backend.",
+  "url": "https://vincentlauriat.github.io/MailClassification.jev/",
+  "author": { "@type": "Person", "name": "Vincent Lauriat", "url": "https://lauriat.fr/" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+  "codeRepository": "https://github.com/vincentlauriat/MailClassification.jev",
+  "license": "https://opensource.org/licenses/MIT"
+}
+</script>
+<style>
+  /* ----------------------------------------------------------------------
+     jevOutlook — palette et mise en page (socle repris de Claude Cockpit).
+     base.css pose les tokens sombres sur :root nu, sans bloc
+     prefers-color-scheme : le mode clair se joue donc ici, et il redéfinit
+     la palette ENTIÈRE, pas seulement le fond. Toute couleur écrite plus bas
+     passe par un token — sinon le sombre fuiterait dans le mode clair.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0d0e11; --bg-lift:#121318; --surface:#16181f; --surface-2:#1c1f28;
+    --line:#292d3a; --line-soft:#1f222d;
+    --txt:#e9ebf2; --muted:#9298ab; --faint:#767d92;
+
+    --accent:#5aa9ff; --accent-soft:rgba(90,169,255,.15); --accent-line:rgba(90,169,255,.34);
+    --hi:#a78bfa;
+    --rtk:#1fd79b; --rtk-soft:rgba(31,215,155,.13); --rtk-line:rgba(31,215,155,.32);
+    --skills:#9b84ff; --skills-soft:rgba(155,132,255,.15); --skills-line:rgba(155,132,255,.34);
+
+    --nav-bg:rgba(13,14,17,.82);
+    --shadow:0 30px 70px rgba(0,0,0,.55);
+    --glow:radial-gradient(520px 320px at 76% -10%,rgba(90,169,255,.18),transparent 64%);
+    --maxw:1080px;
+  }
+
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f7f7f5; --bg-lift:#ffffff; --surface:#ffffff; --surface-2:#f1f0ed;
+      --line:#dcd9d3; --line-soft:#e8e5e0;
+      --txt:#1b1c20; --muted:#565c6b; --faint:#727889;
+
+      --accent:#0f6cbd; --accent-soft:rgba(15,108,189,.10); --accent-line:rgba(15,108,189,.28);
+      --hi:#6d28d9;
+      --rtk:#0c7a58; --rtk-soft:rgba(12,122,88,.10); --rtk-line:rgba(12,122,88,.26);
+      --skills:#5f43c9; --skills-soft:rgba(95,67,201,.10); --skills-line:rgba(95,67,201,.26);
+
+      --on-accent:#ffffff;
+      --nav-bg:rgba(247,247,245,.86);
+      --shadow:0 24px 50px rgba(28,22,18,.13);
+      --glow:radial-gradient(520px 320px at 76% -10%,rgba(15,108,189,.10),transparent 64%);
+    }
+  }
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+  nav{position:sticky;top:0;z-index:var(--z-nav);background:var(--nav-bg);
+      backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line-soft)}
+  nav .wrap{display:flex;align-items:center;gap:18px;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
+  .logo{width:26px;height:26px;border-radius:8px;background:var(--accent);color:var(--on-accent);
+        display:grid;place-items:center;font-size:12px;font-weight:800;font-family:var(--font-mono)}
+  .nav-links{display:flex;gap:18px;margin-left:auto;align-items:center;color:var(--muted);font-size:14px}
+  .nav-links a:hover{color:var(--txt)}
+  .langtog{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .langtog button{background:none;border:0;color:var(--muted);font:600 11px/1 var(--font-mono);
+                  padding:7px 9px;cursor:pointer}
+  .langtog button.on{background:var(--accent);color:var(--on-accent)}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:11px 20px;
+       font-weight:600;font-size:14px;border:1px solid transparent;transition:.15s}
+  .btn-primary{background:var(--accent);color:var(--on-accent)}
+  .btn-primary:hover{filter:brightness(1.08)}
+  .btn-ghost{border-color:var(--line);color:var(--txt)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+  .btn-sm{padding:8px 14px;font-size:13px}
+
+  header{padding:60px 0 34px;border-bottom:1px solid var(--line-soft);background:var(--glow)}
+  .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:46px;align-items:center}
+  .heroicon{width:84px;height:84px;border-radius:20px;display:block;margin:0 0 20px;
+            box-shadow:var(--shadow)}
+  .pill{display:inline-flex;align-items:center;gap:7px;font:600 12px/1 var(--font-mono);
+        color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);
+        border-radius:999px;padding:7px 13px;margin-bottom:18px}
+  h1{font-size:clamp(32px,4.6vw,50px);line-height:1.08;letter-spacing:-.025em;margin:0 0 16px}
+  .grad{background:linear-gradient(100deg,var(--accent),var(--hi));-webkit-background-clip:text;
+        background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:17px;line-height:1.6;margin:0 0 24px;max-width:56ch}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;list-style:none}
+  .badges li{font:600 11px/1 var(--font-mono);color:var(--muted);background:var(--surface);
+             border:1px solid var(--line);border-radius:999px;padding:7px 11px}
+  .meta{color:var(--faint);font-size:13px;font-family:var(--font-mono);line-height:1.7}
+
+  .shot{margin:0;text-align:center}
+  .shot img{display:block;width:100%;height:auto;border-radius:var(--radius);
+            border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow)}
+  .shot figcaption{color:var(--faint);font-size:12px;font-family:var(--font-mono);
+                   margin-top:12px;line-height:1.6}
+  .shot-panel img{max-width:340px;margin:0 auto}
+  .shot-wide{margin-top:30px}
+
+  section{padding:62px 0;border-bottom:1px solid var(--line-soft)}
+  h2{font-size:clamp(24px,3vw,33px);letter-spacing:-.02em;margin:0 0 10px}
+  h3{font-size:16px;letter-spacing:-.01em}
+  .lead{color:var(--muted);font-size:16px;line-height:1.65;max-width:68ch;margin:0 0 4px}
+  .eyebrow{font:600 11px/1 var(--font-mono);letter-spacing:.14em;text-transform:uppercase;
+           color:var(--accent);margin:0 0 12px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--gap);margin-top:30px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+  .card h3{margin:0 0 8px}
+  .card p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}
+  .ico{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);
+       display:grid;place-items:center;margin-bottom:14px;font-size:17px;font-weight:700}
+
+  .bul{list-style:none;margin:20px 0 0;display:grid;gap:11px;max-width:72ch}
+  .bul li{position:relative;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .bul li::before{content:"";position:absolute;left:2px;top:.62em;width:7px;height:7px;
+                  border-radius:2px;background:var(--accent)}
+  .bul b{color:var(--txt);font-weight:600}
+
+  .readout{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+           padding:22px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.85;
+           color:var(--muted);overflow-x:auto;margin-top:28px}
+  .readout b{color:var(--accent);font-size:26px;font-weight:700;display:block;line-height:1.2;margin-bottom:6px}
+  .readout .dim{color:var(--faint)}
+
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:28px}
+  th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{color:var(--faint);font:600 11px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase}
+  td:first-child{color:var(--txt);font-weight:600;white-space:nowrap}
+  td{color:var(--muted);line-height:1.6}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap);margin-top:30px;counter-reset:s}
+  .step{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+        padding:24px 22px 22px;position:relative}
+  .step::before{counter-increment:s;content:counter(s);position:absolute;top:-13px;left:22px;
+                width:28px;height:28px;border-radius:9px;background:var(--accent);color:var(--on-accent);
+                font:800 14px/1 var(--font-mono);display:grid;place-items:center}
+  .step h3{margin:4px 0 6px}
+  .step p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}
+
+  .note{display:flex;gap:12px;background:var(--surface-2);border:1px solid var(--line);
+        border-left:3px solid var(--accent);border-radius:var(--radius-sm);padding:16px 18px;
+        color:var(--muted);font-size:14px;line-height:1.6;margin-top:26px}
+  .note b{color:var(--txt)}
+
+  code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:6px;
+       padding:2px 6px;font-size:12.5px;color:var(--accent)}
+
+  .lineage{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--gap);margin-top:30px}
+  .anc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .anc h3{margin:0 0 6px;font-size:15px}
+  .anc p{color:var(--muted);font-size:13.5px;line-height:1.6;margin:0 0 12px}
+  .anc a{color:var(--accent);font-size:13px;font-family:var(--font-mono);
+         text-decoration:underline;text-underline-offset:3px}
+
+  footer{padding:36px 0 56px;color:var(--faint);font-size:13px;text-align:center;line-height:1.9}
+  footer a{color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+  footer a:hover{color:var(--accent)}
+
+  @media (max-width:860px){
+    .hero{grid-template-columns:1fr;gap:32px}
+    .nav-links a:not(.btn){display:none}
+    .steps{grid-template-columns:1fr}
+    header{padding:42px 0 26px}
+    section{padding:46px 0}
+  }
+  @media (max-width:430px){
+    .wrap{padding:0 16px}
+    .badges li{font-size:10.5px}
+  }
+</style>
+
+</head>
+<body class="lang-en">
+<a class="skip" href="#how"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span><span class="zh">跳至內容</span></a>
+
+<nav><div class="wrap">
+  <a class="brand" href="#top"><span class="logo">jO</span>jevOutlook</a>
+  <div class="nav-links">
+    <a href="#how"><span class="en">How it decides</span><span class="fr">Comment il décide</span><span class="zh">如何判定</span></a>
+    <a href="#mailboxes"><span class="en">Mailboxes</span><span class="fr">Boîtes</span><span class="zh">信箱</span></a>
+    <a href="#privacy"><span class="en">Privacy</span><span class="fr">Confidentialité</span><span class="zh">隱私</span></a>
+    <a href="#install"><span class="en">Install</span><span class="fr">Installer</span><span class="zh">安裝</span></a>
+    <div class="langtog" role="group" aria-label="Language / Langue / 語言">
+      <button type="button" data-lang="en" class="on" aria-pressed="true" onclick="setLang('en')">EN</button>
+      <button type="button" data-lang="fr" aria-pressed="false" onclick="setLang('fr')">FR</button>
+      <button type="button" data-lang="zh" aria-pressed="false" onclick="setLang('zh')">中文</button>
+    </div>
+    <a class="btn btn-primary btn-sm" href="https://github.com/vincentlauriat/MailClassification.jev">GitHub</a>
+  </div>
+</div></nav>
+
+<header id="top"><div class="wrap">
+  <div class="hero">
+    <div>
+      <img class="heroicon" src="assets/icon-256.png" alt="The jevOutlook icon: a blue envelope with a purple check mark on a dark rounded square">
+      <span class="pill">◉ <span class="en">Outlook · Gmail · IMAP · local · MIT</span><span class="fr">Outlook · Gmail · IMAP · en local · MIT</span><span class="zh">Outlook · Gmail · IMAP · 本機執行 · MIT</span></span>
+      <h1>
+        <span class="en">Your mailboxes sorted<br><span class="grad">by what messages mean.</span></span>
+        <span class="fr">Vos boîtes triées<br><span class="grad">selon le sens des messages.</span></span>
+        <span class="zh">依訊息的<span class="grad">真正含義</span><br>整理你的信箱。</span>
+      </h1>
+      <p class="sub">
+        <span class="en">jevOutlook reads Outlook, Gmail and IMAP mailboxes, asks Jev — TypeSafe's decision model — which of your own categories each message belongs to, and writes that one category back. Preview by default, a hard cost cap, no server, nothing deleted.</span>
+        <span class="fr">jevOutlook lit vos boîtes Outlook, Gmail et IMAP, demande à Jev — le modèle de décision de TypeSafe — à laquelle de vos catégories appartient chaque message, et écrit cette seule catégorie. Aperçu par défaut, budget plafonné, aucun serveur, rien de supprimé.</span>
+        <span class="zh">jevOutlook 讀取 Outlook、Gmail 與 IMAP 信箱，向 TypeSafe 的決策模型 Jev 詢問每封郵件屬於你定義的哪個類別，然後只寫回那一個類別。預設僅預覽、費用有上限、沒有伺服器、不刪除任何郵件。</span>
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/vincentlauriat/MailClassification.jev#5-install"><span class="en">Build from source</span><span class="fr">Compiler depuis les sources</span><span class="zh">從原始碼建置</span></a>
+        <a class="btn btn-ghost" href="https://github.com/vincentlauriat/MailClassification.jev"><span class="en">Read the guide on GitHub</span><span class="fr">Lire le guide sur GitHub</span><span class="zh">在 GitHub 閱讀指南</span></a>
+      </div>
+      <ul class="badges">
+        <li>C# · .NET 10</li>
+        <li>macOS · Windows · Linux</li>
+        <li><span class="en">Microsoft Graph + IMAP</span><span class="fr">Microsoft Graph + IMAP</span><span class="zh">Microsoft Graph + IMAP</span></li>
+        <li>MIT</li>
+        <li><span class="en">66 tests</span><span class="fr">66 tests</span><span class="zh">66 項測試</span></li>
+      </ul>
+      <p class="meta">
+        <span class="en">Free &amp; open source · runs on your machine · sends the model only what it needs to decide</span>
+        <span class="fr">Gratuit et open source · tourne sur votre machine · n'envoie au modèle que ce qu'il faut pour décider</span>
+        <span class="zh">免費開源 · 在你的電腦上執行 · 只把判定所需的內容送給模型</span>
+      </p>
+    </div>
+    <figure class="shot">
+      <img src="screenshots/dashboard-mailboxes.png" alt="The Mailboxes card of the jevOutlook dashboard: a Microsoft 365 mailbox marked ready, and the form to add a Gmail mailbox with an app password">
+      <figcaption>
+        <span class="en">The local dashboard — every mailbox, one place.</span>
+        <span class="fr">Le tableau de bord local — toutes les boîtes, un seul endroit.</span>
+        <span class="zh">本機儀表板——所有信箱，一處管理。</span>
+      </figcaption>
+    </figure>
+  </div>
+</div></header>
+
+<main>
+
+<section id="how"><div class="wrap">
+  <p class="eyebrow"><span class="en">How it decides</span><span class="fr">Comment il décide</span><span class="zh">如何判定</span></p>
+  <h2><span class="en">Two looks at each message, the second only when needed</span><span class="fr">Deux regards sur chaque message, le second seulement si nécessaire</span><span class="zh">每封郵件看兩次，第二次只在需要時</span></h2>
+  <p class="lead">
+    <span class="en">You describe up to twelve categories in plain language. For each message, Jev is asked one question — which category fits — and answers with a choice and a probability for every option. That probability is the confidence, and it drives everything else.</span>
+    <span class="fr">Vous décrivez jusqu'à douze catégories en langage courant. Pour chaque message, Jev reçoit une seule question — quelle catégorie convient — et répond par un choix et une probabilité pour chaque option. Cette probabilité est la confiance, et c'est elle qui pilote tout le reste.</span>
+    <span class="zh">你用日常語言描述最多十二個類別。對每封郵件，Jev 只回答一個問題——哪個類別合適——並給出選擇與每個選項的機率。這個機率就是信心值，其餘一切都由它驅動。</span>
+  </p>
+  <div class="steps">
+    <div class="step">
+      <h3><span class="en">Headers and preview first</span><span class="fr">D'abord les en-têtes et l'aperçu</span><span class="zh">先看標頭與預覽</span></h3>
+      <p><span class="en">Sender, recipients, subject, mailing-list and automation headers, the first 255 characters. Cheap, and enough for most mail: 79 of 100 messages in a real run.</span><span class="fr">Expéditeur, destinataires, objet, en-têtes de liste et d'automatisation, les 255 premiers caractères. Peu coûteux et suffisant pour la plupart des messages : 79 sur 100 lors d'un run réel.</span><span class="zh">寄件者、收件者、主旨、郵件列表與自動化標頭、前 255 個字元。便宜，而且對大多數郵件已足夠：實測 100 封中有 79 封在此定案。</span></p>
+    </div>
+    <div class="step">
+      <h3><span class="en">The text only below the threshold</span><span class="fr">Le texte seulement sous le seuil</span><span class="zh">低於門檻才讀內文</span></h3>
+      <p><span class="en">Confidence under 0.75 — or an archive decision that needs stronger proof — fetches up to 5 000 characters of the body and asks again with the full context.</span><span class="fr">Une confiance sous 0,75 — ou une décision d'archivage qui exige plus de preuves — déclenche la lecture de 5 000 caractères au plus et une seconde question avec tout le contexte.</span><span class="zh">信心值低於 0.75，或封存決定需要更強證據時，才擷取至多 5,000 字元的內文，帶著完整脈絡再問一次。</span></p>
+    </div>
+    <div class="step">
+      <h3><span class="en">Checkpoint, then write</span><span class="fr">Checkpoint, puis écriture</span><span class="zh">先存檔，再寫入</span></h3>
+      <p><span class="en">Every decision is saved to disk before the mailbox is touched. Your category is added to the message's existing ones — nothing removed — and archive moves come last. Interrupt at any time; resuming never pays twice.</span><span class="fr">Chaque décision est enregistrée sur disque avant de toucher la boîte. Votre catégorie s'ajoute à celles du message — rien n'est retiré — et l'archivage vient en dernier. Interrompez quand vous voulez : la reprise ne paie jamais deux fois.</span><span class="zh">每個決定都先寫入磁碟，再動信箱。你的類別會加到郵件既有的類別上——不移除任何東西——封存移動放在最後。隨時可中斷；續跑絕不重複付費。</span></p>
+    </div>
+  </div>
+  <figure class="shot shot-wide">
+    <img src="screenshots/dashboard-run.png" alt="The Process messages card after a live run: 100 of 100 messages reviewed, one minute of processing, $0.009 of API cost, 79 decided on metadata, 20 on full content, and the number of messages per category">
+    <figcaption>
+      <span class="en">A real live run: 100 unread messages, 120 model requests, $0.009 — 79 decided on metadata, 20 on the text, 1 skipped safely.</span>
+      <span class="fr">Un run réel : 100 messages non lus, 120 requêtes au modèle, 0,009 $ — 79 décidés sur les métadonnées, 20 sur le texte, 1 ignoré sans risque.</span>
+      <span class="zh">一次真實執行：100 封未讀郵件、120 次模型請求、0.009 美元——79 封憑中繼資料定案、20 封讀了內文、1 封安全略過。</span>
+    </figcaption>
+  </figure>
+</div></section>
+
+<section id="mailboxes"><div class="wrap">
+  <p class="eyebrow"><span class="en">Mailboxes</span><span class="fr">Boîtes</span><span class="zh">信箱</span></p>
+  <h2><span class="en">Three kinds of mailbox, one engine</span><span class="fr">Trois types de boîtes, un seul moteur</span><span class="zh">三種信箱，一個引擎</span></h2>
+  <p class="lead">
+    <span class="en">The classification engine never knows which server it talks to. Each provider maps "category" and "archive" to what that mailbox natively has, so your labels show up in the clients you already use.</span>
+    <span class="fr">Le moteur de classification ignore à quel serveur il parle. Chaque fournisseur traduit « catégorie » et « archiver » dans ce que la boîte possède nativement : vos libellés apparaissent dans les clients que vous utilisez déjà.</span>
+    <span class="zh">分類引擎不知道自己在和哪個伺服器對話。每種提供者把「類別」與「封存」對應到該信箱原生的機制，因此你的標籤會出現在你已經在用的用戶端裡。</span>
+  </p>
+  <div class="grid">
+    <div class="card">
+      <div class="ico">M</div>
+      <h3><span class="en">Microsoft 365 &amp; Outlook.com</span><span class="fr">Microsoft 365 et Outlook.com</span><span class="zh">Microsoft 365 與 Outlook.com</span></h3>
+      <p><span class="en">Microsoft Graph with delegated permissions: one app registration you own, shared by all your Microsoft mailboxes, then a device code typed once per mailbox. Categories are Outlook categories with a colour; archive moves to the Archive folder. Exchange Online has no password IMAP any more — this is the only honest path.</span><span class="fr">Microsoft Graph avec permissions déléguées : une inscription d'application qui vous appartient, partagée par toutes vos boîtes Microsoft, puis un code saisi une fois par boîte. Les catégories sont des catégories Outlook colorées ; l'archivage déplace vers le dossier Archive. Exchange Online n'a plus d'IMAP par mot de passe — c'est la seule voie honnête.</span><span class="zh">透過 Microsoft Graph 的委派權限：你自己的一個應用程式註冊，供所有 Microsoft 信箱共用，每個信箱只需輸入一次裝置代碼。類別就是帶顏色的 Outlook 類別；封存會移到「封存」資料夾。Exchange Online 已不再支援密碼式 IMAP——這是唯一誠實的做法。</span></p>
+    </div>
+    <div class="card">
+      <div class="ico">G</div>
+      <h3>Gmail</h3>
+      <p><span class="en">IMAP with a Google app password — no Google Cloud project, no consent screen. Categories are real Gmail labels; archive removes the message from the Inbox exactly like Gmail's own Archive button, and it stays in All Mail.</span><span class="fr">IMAP avec un mot de passe d'application Google — pas de projet Google Cloud, pas d'écran de consentement. Les catégories sont de vrais labels Gmail ; l'archivage retire le message de la boîte de réception comme le bouton Archiver de Gmail, et il reste dans Tous les messages.</span><span class="zh">使用 Google 應用程式密碼的 IMAP——不需要 Google Cloud 專案，也沒有同意畫面。類別就是真正的 Gmail 標籤；封存會像 Gmail 自己的封存按鈕一樣把郵件移出收件匣，並保留在「所有郵件」中。</span></p>
+    </div>
+    <div class="card">
+      <div class="ico">I</div>
+      <h3><span class="en">Any IMAP server</span><span class="fr">Tout serveur IMAP</span><span class="zh">任何 IMAP 伺服器</span></h3>
+      <p><span class="en">Dovecot, Cyrus, Courier, most hosted mail. Categories are IMAP keywords — custom flags shown by Thunderbird, Apple Mail or Roundcube — and archive moves to an Archive folder. If a server refuses custom keywords, jevOutlook says so and writes nothing.</span><span class="fr">Dovecot, Cyrus, Courier, la plupart des hébergeurs. Les catégories sont des mots-clés IMAP — des drapeaux personnalisés affichés par Thunderbird, Apple Mail ou Roundcube — et l'archivage déplace vers un dossier Archive. Si un serveur refuse les mots-clés, jevOutlook le dit et n'écrit rien.</span><span class="zh">Dovecot、Cyrus、Courier 及大多數代管郵件服務。類別是 IMAP 關鍵字——Thunderbird、Apple Mail 或 Roundcube 都會顯示的自訂旗標——封存則移到 Archive 資料夾。若伺服器拒絕自訂關鍵字，jevOutlook 會明說並且不寫入任何東西。</span></p>
+    </div>
+  </div>
+  <div class="note">
+    <span aria-hidden="true">⌘</span>
+    <div>
+      <span class="en"><b>Passwords never sit next to the configuration.</b> On macOS they go to the login Keychain through the system tool; the Microsoft sign-in is cached by MSAL. Nothing secret is written to <code>accounts.json</code>.</span>
+      <span class="fr"><b>Les mots de passe ne sont jamais à côté de la configuration.</b> Sur macOS ils vont dans le Trousseau via l'outil système ; la connexion Microsoft est mise en cache par MSAL. Rien de secret n'est écrit dans <code>accounts.json</code>.</span>
+      <span class="zh"><b>密碼絕不會和設定檔放在一起。</b>在 macOS 上會透過系統工具存入登入鑰匙圈；Microsoft 登入由 MSAL 快取。<code>accounts.json</code> 裡不會寫入任何機密。</span>
+    </div>
+  </div>
+</div></section>
+
+<section id="safety"><div class="wrap">
+  <p class="eyebrow"><span class="en">Safe by default</span><span class="fr">Sûr par défaut</span><span class="zh">預設安全</span></p>
+  <h2><span class="en">Preview first, then categories, then — if you insist — archiving</span><span class="fr">L'aperçu d'abord, puis les catégories, puis — si vous y tenez — l'archivage</span><span class="zh">先預覽，再加類別，最後——若你堅持——才封存</span></h2>
+  <ul class="bul">
+    <li><span class="en"><b>Preview by default.</b> The first run shows a table of what would happen; nothing is written until you untick "Preview only" or pass <code>--live</code>.</span><span class="fr"><b>Aperçu par défaut.</b> Le premier run affiche un tableau de ce qui se passerait ; rien n'est écrit tant que vous ne décochez pas « Preview only » ou ne passez pas <code>--live</code>.</span><span class="zh"><b>預設僅預覽。</b>第一次執行只顯示將會發生什麼的表格；除非取消勾選「Preview only」或加上 <code>--live</code>，否則不寫入任何東西。</span></li>
+    <li><span class="en"><b>Archiving needs four things at once:</b> the archive mode, a category you marked archive-eligible, a confidence at or above a second, stricter threshold (0.93), and — in the terminal — a typed confirmation. Archived mail is moved, never deleted.</span><span class="fr"><b>L'archivage exige quatre conditions à la fois :</b> le mode archivage, une catégorie que vous avez marquée éligible, une confiance au moins égale à un second seuil plus strict (0,93) et — dans le terminal — une confirmation saisie. Le courrier archivé est déplacé, jamais supprimé.</span><span class="zh"><b>封存需要同時滿足四個條件：</b>封存模式、你標記為可封存的類別、信心值達到第二個更嚴格的門檻（0.93），以及——在終端機裡——輸入確認。封存的郵件只是移動，從不刪除。</span></li>
+    <li><span class="en"><b>A cost cap per run.</b> Before every model request the remaining budget is checked; the run stops at the cap and can be continued with a higher one. Actual spend comes from OpenRouter's own report.</span><span class="fr"><b>Un plafond de coût par run.</b> Avant chaque requête au modèle, le budget restant est vérifié ; le run s'arrête au plafond et peut reprendre avec un plafond plus haut. La dépense réelle vient du relevé d'OpenRouter.</span><span class="zh"><b>每次執行都有費用上限。</b>每次向模型請求前都會檢查剩餘預算；到達上限就停止，可提高上限後續跑。實際花費以 OpenRouter 的回報為準。</span></li>
+    <li><span class="en"><b>Fails closed.</b> An invalid model answer, an unreadable body, a vanished message or a throttled server: the message is skipped or the run pauses with everything checkpointed. The mailbox is never modified on doubt. jevOutlook never deletes, never marks junk, never sends.</span><span class="fr"><b>Fermeture sûre.</b> Réponse invalide du modèle, corps illisible, message disparu ou serveur saturé : le message est ignoré ou le run se met en pause, tout étant checkpointé. La boîte n'est jamais modifiée dans le doute. jevOutlook ne supprime jamais, ne marque jamais en indésirable, n'envoie jamais.</span><span class="zh"><b>失敗即關閉。</b>模型回答無效、內文無法讀取、郵件消失或伺服器限流時：郵件會被略過或執行暫停，且全部已存檔。有疑慮時絕不修改信箱。jevOutlook 從不刪除、從不標記垃圾郵件、從不寄信。</span></li>
+    <li><span class="en"><b>Nothing to undo later.</b> Only your category is added; existing categories are kept. A message already carrying one of your categories is skipped by later runs — that is the only "marker" there is.</span><span class="fr"><b>Rien à défaire plus tard.</b> Seule votre catégorie est ajoutée ; les existantes sont conservées. Un message qui porte déjà l'une de vos catégories est ignoré par les runs suivants — c'est le seul « marqueur » qui existe.</span><span class="zh"><b>日後無需復原。</b>只加上你的類別；既有類別保留。已帶有你任一類別的郵件會被後續執行略過——這是唯一的「標記」。</span></li>
+  </ul>
+  <div class="readout">
+    <b>$0.009</b>
+    <span class="en">for 100 unread messages, live, categories only — 120 model requests, about one minute. <span class="dim">Measured on a Microsoft 365 mailbox with the default thresholds.</span></span>
+    <span class="fr">pour 100 messages non lus, en réel, catégories seules — 120 requêtes au modèle, environ une minute. <span class="dim">Mesuré sur une boîte Microsoft 365 avec les seuils par défaut.</span></span>
+    <span class="zh">處理 100 封未讀郵件、實際寫入、僅加類別——120 次模型請求，約一分鐘。<span class="dim">在一個 Microsoft 365 信箱上以預設門檻實測。</span></span>
+  </div>
+</div></section>
+
+<section id="categories"><div class="wrap">
+  <p class="eyebrow"><span class="en">Categories</span><span class="fr">Catégories</span><span class="zh">類別</span></p>
+  <h2><span class="en">Seven playbooks to start from, twelve rules of your own at most</span><span class="fr">Sept playbooks pour démarrer, douze règles à vous au plus</span><span class="zh">七套現成方案起步，最多十二條你自己的規則</span></h2>
+  <p class="lead">
+    <span class="en">A rule is a name, a criterion written in plain language and an "archive eligible" flag. The criterion is sent to Jev verbatim, so the way to fix a misclassification is to sharpen the sentence: say what belongs, then what is excluded.</span>
+    <span class="fr">Une règle, c'est un nom, un critère écrit en langage courant et un drapeau « éligible à l'archivage ». Le critère est transmis à Jev tel quel : pour corriger un mauvais classement, on affine la phrase — ce qui appartient à la catégorie, puis ce qui en est exclu.</span>
+    <span class="zh">一條規則包含名稱、用日常語言寫的判準，以及「可封存」旗標。判準會原封不動送給 Jev，所以修正誤判的方法就是把句子寫得更精確：先說什麼屬於這個類別，再說什麼被排除。</span>
+  </p>
+  <table>
+    <thead><tr><th><span class="en">Playbook</span><span class="fr">Playbook</span><span class="zh">方案</span></th><th><span class="en">Categories</span><span class="fr">Catégories</span><span class="zh">類別</span></th></tr></thead>
+    <tbody>
+      <tr><td>Universal inbox</td><td>action-required · important-update · personal · money-and-orders · opportunities · newsletters · routine-notifications* · cold-outreach* · junk* · review</td></tr>
+      <tr><td>Founders &amp; operators</td><td>decision-required · customer-risk · investor-and-board · team-blocker · delegatable · vendor-pitch* · review</td></tr>
+      <tr><td>Sales &amp; business development</td><td>hot-lead · deal-action · partner-opportunity · customer-success · sales-automation · irrelevant-outreach* · review</td></tr>
+      <tr><td>Investors</td><td>founder-intro · active-deal · portfolio-action · lp-and-fund · ecosystem-update · mass-fundraising-pitch* · review</td></tr>
+      <tr><td>Recruiting &amp; people</td><td>candidate-action · interview-scheduling · offer-and-closing · employee-sensitive · ats-automation · recruiting-vendor-pitch* · review</td></tr>
+      <tr><td>Freelancers &amp; creators</td><td>qualified-opportunity · client-action · payment-and-contract · audience-and-community · platform-update · low-quality-collab* · review</td></tr>
+      <tr><td>Support &amp; commerce</td><td>urgent-escalation · refund-or-billing · delivery-or-order · product-help · feedback-and-feature · automated-system-mail · review</td></tr>
+    </tbody>
+  </table>
+  <p class="meta" style="margin-top:12px"><span class="en">* archive eligible. The playbooks are identical to jevMail's.</span><span class="fr">* éligible à l'archivage. Les playbooks sont identiques à ceux de jevMail.</span><span class="zh">* 可封存。這些方案與 jevMail 的完全相同。</span></p>
+</div></section>
+
+<section id="privacy"><div class="wrap">
+  <p class="eyebrow"><span class="en">Privacy</span><span class="fr">Confidentialité</span><span class="zh">隱私</span></p>
+  <h2><span class="en">Runs on your machine. Sends the model only what it needs to decide.</span><span class="fr">Tourne sur votre machine. N'envoie au modèle que ce qu'il faut pour décider.</span><span class="zh">在你的電腦上執行。只把判定所需的內容送給模型。</span></h2>
+  <ul class="bul">
+    <li><span class="en"><b>No server, no account, no telemetry.</b> The dashboard is a local page on 127.0.0.1 that rejects cross-site calls. State lives in <code>~/.jevoutlook</code> with mode 0600.</span><span class="fr"><b>Aucun serveur, aucun compte, aucune télémétrie.</b> Le tableau de bord est une page locale sur 127.0.0.1 qui rejette les appels cross-site. L'état vit dans <code>~/.jevoutlook</code> en mode 0600.</span><span class="zh"><b>沒有伺服器、沒有帳號、沒有遙測。</b>儀表板是 127.0.0.1 上的本機頁面，會拒絕跨站呼叫。狀態存放在 <code>~/.jevoutlook</code>，權限 0600。</span></li>
+    <li><span class="en"><b>What the model receives</b> for each selected message: your category names and criteria, sender, recipients, subject, date, mailing-list and automation headers, importance, the 255-character preview, and — only when the confidence policy requires it — up to 5 000 characters of text. Never attachments. One message per request, never combined with another.</span><span class="fr"><b>Ce que le modèle reçoit</b> pour chaque message sélectionné : vos noms de catégories et leurs critères, expéditeur, destinataires, objet, date, en-têtes de liste et d'automatisation, importance, l'aperçu de 255 caractères et — seulement quand la politique de confiance l'exige — jusqu'à 5 000 caractères de texte. Jamais les pièces jointes. Un message par requête, jamais combiné à un autre.</span><span class="zh"><b>模型收到的內容</b>（每封被選中的郵件）：你的類別名稱與判準、寄件者、收件者、主旨、日期、郵件列表與自動化標頭、重要性、255 字元預覽，以及——僅在信心政策要求時——至多 5,000 字元的內文。絕不含附件。每次請求一封郵件，從不與其他郵件合併。</span></li>
+    <li><span class="en"><b>Email is untrusted input.</b> The prompt tells the model never to follow instructions found inside a message.</span><span class="fr"><b>L'e-mail est une donnée non fiable.</b> Le prompt interdit au modèle de suivre des instructions trouvées dans un message.</span><span class="zh"><b>郵件是不可信的輸入。</b>提示詞明確要求模型絕不執行郵件內出現的指令。</span></li>
+    <li><span class="en"><b>Your compliance review still applies.</b> Read OpenRouter's and TypeSafe's data policies before processing sensitive mail.</span><span class="fr"><b>Votre revue de conformité reste nécessaire.</b> Lisez les politiques de données d'OpenRouter et de TypeSafe avant de traiter du courrier sensible.</span><span class="zh"><b>你的合規審查仍然適用。</b>處理敏感郵件前，請先閱讀 OpenRouter 與 TypeSafe 的資料政策。</span></li>
+  </ul>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <p class="eyebrow"><span class="en">Install</span><span class="fr">Installer</span><span class="zh">安裝</span></p>
+  <h2><span class="en">Three steps, then the dashboard takes over</span><span class="fr">Trois étapes, puis le tableau de bord prend le relais</span><span class="zh">三個步驟，之後交給儀表板</span></h2>
+  <div class="steps">
+    <div class="step">
+      <h3><span class="en">Build</span><span class="fr">Compiler</span><span class="zh">建置</span></h3>
+      <p><span class="en">Install the .NET 10 SDK, clone the repository, <code>dotnet build -c Release</code>. One executable, <code>jevoutlook</code>, is both the CLI and the dashboard.</span><span class="fr">Installez le SDK .NET 10, clonez le dépôt, <code>dotnet build -c Release</code>. Un seul exécutable, <code>jevoutlook</code>, sert de CLI et de tableau de bord.</span><span class="zh">安裝 .NET 10 SDK，複製儲存庫，執行 <code>dotnet build -c Release</code>。單一執行檔 <code>jevoutlook</code> 同時是命令列工具與儀表板。</span></p>
+    </div>
+    <div class="step">
+      <h3><span class="en">Connect</span><span class="fr">Connecter</span><span class="zh">連接</span></h3>
+      <p><span class="en">An OpenRouter key for the model. Then each mailbox: a Google app password for Gmail, the password for IMAP, a one-time Entra app registration and a device code for Microsoft 365.</span><span class="fr">Une clé OpenRouter pour le modèle. Puis chaque boîte : un mot de passe d'application Google pour Gmail, le mot de passe pour IMAP, une inscription Entra unique et un code pour Microsoft 365.</span><span class="zh">先取得 OpenRouter 金鑰給模型用。接著逐一連接信箱：Gmail 用 Google 應用程式密碼，IMAP 用信箱密碼，Microsoft 365 則一次性註冊 Entra 應用程式並輸入裝置代碼。</span></p>
+    </div>
+    <div class="step">
+      <h3><span class="en">Preview ten messages</span><span class="fr">Prévisualiser dix messages</span><span class="zh">預覽十封郵件</span></h3>
+      <p><span class="en"><code>jevoutlook ui</code> or <code>jevoutlook run</code>: ten unread messages, a table of what would happen, about a tenth of a cent. Tune the criteria, then go live.</span><span class="fr"><code>jevoutlook ui</code> ou <code>jevoutlook run</code> : dix messages non lus, un tableau de ce qui se passerait, un dixième de centime environ. Affinez les critères, puis passez en réel.</span><span class="zh"><code>jevoutlook ui</code> 或 <code>jevoutlook run</code>：十封未讀郵件、一張「將會發生什麼」的表格、約千分之一美元。調整判準，再正式執行。</span></p>
+    </div>
+  </div>
+  <figure class="shot shot-wide">
+    <img src="screenshots/dashboard-settings.png" alt="The processing settings card: email source, message limit, maximum processing cost, processing mode, unread only and preview only">
+    <figcaption>
+      <span class="en">The defaults are the safe ones: Inbox, unread only, 10 messages, $0.10, preview.</span>
+      <span class="fr">Les valeurs par défaut sont les prudentes : boîte de réception, non lus seulement, 10 messages, 0,10 $, aperçu.</span>
+      <span class="zh">預設值就是安全值：收件匣、僅未讀、10 封、0.10 美元、僅預覽。</span>
+    </figcaption>
+  </figure>
+  <div class="note">
+    <span aria-hidden="true">ℹ</span>
+    <div>
+      <span class="en"><b>No binary download yet</b> — jevOutlook is built from source with the .NET 10 SDK on macOS, Windows or Linux. The step-by-step guide, including the Entra registration and the "admin approval required" case, is in the README.</span>
+      <span class="fr"><b>Pas encore de binaire à télécharger</b> — jevOutlook se compile depuis les sources avec le SDK .NET 10 sur macOS, Windows ou Linux. Le guide pas à pas, y compris l'inscription Entra et le cas « approbation administrateur requise », est dans le README.</span>
+      <span class="zh"><b>目前沒有可下載的執行檔</b>——jevOutlook 需在 macOS、Windows 或 Linux 上以 .NET 10 SDK 從原始碼建置。逐步指南（含 Entra 註冊與「需要管理員核准」的情況）都在 README 裡。</span>
+    </div>
+  </div>
+</div></section>
+
+<section id="lineage"><div class="wrap">
+  <p class="eyebrow"><span class="en">Lineage</span><span class="fr">Filiation</span><span class="zh">淵源</span></p>
+  <h2><span class="en">Built on jevMail, Jev and MailKit</span><span class="fr">Construit sur jevMail, Jev et MailKit</span><span class="zh">建立在 jevMail、Jev 與 MailKit 之上</span></h2>
+  <div class="lineage">
+    <div class="anc">
+      <h3>jevMail</h3>
+      <p><span class="en">The Gmail + Google Apps Script original by Ilia AGI (MIT): the two-stage policy, the thresholds, the budget accounting, the seven playbooks and the dashboard layout all come from it.</span><span class="fr">L'original Gmail + Google Apps Script d'Ilia AGI (MIT) : la politique en deux étapes, les seuils, la comptabilité du budget, les sept playbooks et la mise en page du tableau de bord en viennent.</span><span class="zh">Ilia AGI 的 Gmail + Google Apps Script 原作（MIT）：兩階段策略、門檻、預算計算、七套方案與儀表板版面皆源自於此。</span></p>
+      <a href="https://github.com/ilyamk/jev-gmail-ai-spam-filter-and-labeling">github.com/ilyamk/jev-gmail-ai-spam-filter-and-labeling</a>
+    </div>
+    <div class="anc">
+      <h3>Jev · TypeSafe</h3>
+      <p><span class="en">A System One decision model: it answers a Choice question with a category and a probability for every option, which is what makes confidence-aware automation possible.</span><span class="fr">Un modèle de décision System One : il répond à une question Choice par une catégorie et une probabilité pour chaque option, ce qui rend possible une automatisation consciente de sa confiance.</span><span class="zh">System One 決策模型：以類別加上每個選項的機率回答 Choice 問題，讓「知道自己有多確定」的自動化成為可能。</span></p>
+      <a href="https://docs.typesafe.ai/primitives/choice">docs.typesafe.ai/primitives/choice</a>
+    </div>
+    <div class="anc">
+      <h3>Microsoft Graph · MailKit</h3>
+      <p><span class="en">Graph for Microsoft 365 (batched reads, category writes, archive moves); MailKit for Gmail and IMAP (labels, keywords, UID cursors). Both behind one small mailbox interface.</span><span class="fr">Graph pour Microsoft 365 (lectures groupées, écriture des catégories, archivage) ; MailKit pour Gmail et IMAP (labels, mots-clés, curseurs UID). Les deux derrière une seule petite interface de boîte.</span><span class="zh">Microsoft 365 走 Graph（批次讀取、寫入類別、封存移動）；Gmail 與 IMAP 走 MailKit（標籤、關鍵字、UID 游標）。兩者都藏在同一個精簡的信箱介面之後。</span></p>
+      <a href="https://github.com/jstedfast/MailKit">github.com/jstedfast/MailKit</a>
+    </div>
+  </div>
+</div></section>
+
+</main>
+
+<footer><div class="wrap">
+  jevOutlook · <span class="en">MIT License</span><span class="fr">Licence MIT</span><span class="zh">MIT 授權</span> · © 2026 Vincent Lauriat<br>
+  <a href="https://github.com/vincentlauriat/MailClassification.jev">github.com/vincentlauriat/MailClassification.jev</a>
+  · <a href="https://lauriat.fr">lauriat.fr</a>
+  · <a href="https://vincentlauriat.github.io">vincentlauriat.github.io</a>
+</div></footer>
+
+<script>
+  var LANG_TAG={en:'en',fr:'fr',zh:'zh-Hant'};
+  function setLang(l){
+    if(!LANG_TAG[l]) l='en';
+    document.body.classList.remove('lang-en','lang-fr','lang-zh');
+    document.body.classList.add('lang-'+l);
+    document.documentElement.lang=LANG_TAG[l];
+    document.querySelectorAll('.langtog button').forEach(function(b){
+      var on=b.dataset.lang===l;
+      b.classList.toggle('on',on);
+      b.setAttribute('aria-pressed',on?'true':'false');
+    });
+    try{localStorage.setItem('vl-lang',l)}catch(e){}
+  }
+  (function(){
+    var saved;try{saved=localStorage.getItem('vl-lang')}catch(e){}
+    var n=(navigator.language||'en').slice(0,2).toLowerCase();
+    setLang(saved||(n==='zh'?'zh':(n==='fr'?'fr':'en')));
+  })();
+</script>
+</body>
+</html>

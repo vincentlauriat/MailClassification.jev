@@ -22,3 +22,6 @@ release/
 
 # Local secrets (never commit)
 appsettings.local.json
+
+# macOS
+.DS_Store
