@@ -3,12 +3,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace JevOutlook.Graph;
+namespace JevOutlook.Mail;
 
 /// <summary>
 /// Normalized, cheap view of one Outlook message: the equivalent of the Gmail
 /// "metadata" format (headers + snippet). Built from a Graph message resource
-/// selected with <see cref="GraphMailClient.MetadataSelect"/>.
+/// selected with the Graph metadata projection (or from IMAP headers).
 /// </summary>
 public sealed class MessageMetadata
 {

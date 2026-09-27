@@ -4,20 +4,15 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using JevOutlook.Mail;
 
 namespace JevOutlook.Graph;
-
-public sealed record MessageRef(string Id, DateTimeOffset ReceivedDateTime, IReadOnlyList<string> Categories, string ParentFolderId, bool IsRead);
-
-public sealed record ListPage(IReadOnlyList<MessageRef> Items, bool Full);
 
 public sealed record WellKnownFolders(string Inbox, string? Archive, string? JunkEmail, string? DeletedItems, string? Drafts, string? SentItems)
 {
     public bool IsExcluded(string parentFolderId) =>
         parentFolderId == JunkEmail || parentFolderId == DeletedItems || parentFolderId == Drafts;
 }
-
-public enum ReadMode { Metadata, Full, Categories }
 
 /// <summary>One inner response of a Graph JSON batch, mapped back to the request it answers.</summary>
 public sealed class BatchPart
@@ -31,29 +26,28 @@ public sealed class BatchPart
     public string Error { get; init; } = string.Empty;
 }
 
-public sealed record WriteOutcome(bool Ok, bool Retryable, string Error)
-{
-    public static readonly WriteOutcome Success = new(true, false, string.Empty);
-}
-
 public sealed record BatchRequest(string Id, string Method, string Url, IReadOnlyDictionary<string, string>? Headers = null, JsonNode? Body = null);
 
 /// <summary>
-/// Thin Microsoft Graph mail client over <see cref="HttpClient"/>. It exposes
-/// exactly the operations the triage engine needs: cursor-based listing,
-/// batched reads, master-category management, category writes and archive moves.
+/// Microsoft Graph implementation of <see cref="IMailbox"/> over <see cref="HttpClient"/>:
+/// cursor-based listing, batched reads, master-category management, category
+/// writes and archive moves. Labels are Outlook categories.
 /// </summary>
-public sealed class GraphMailClient
+public sealed class GraphMailClient : IMailbox
 {
     public const string MetadataSelect =
         "id,conversationId,subject,from,toRecipients,ccRecipients,replyTo,receivedDateTime,bodyPreview,categories,hasAttachments,importance,inferenceClassification,internetMessageHeaders";
     public const string FullSelect = "id,body";
     private const string ListSelect = "id,receivedDateTime,categories,parentFolderId,isRead";
+    private const string SortKeyFormat = "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'";
 
     private static readonly SemaphoreSlim MailboxGate = new(AppConstants.GraphMaxConcurrentCalls, AppConstants.GraphMaxConcurrentCalls);
 
     private readonly HttpClient _http;
     private readonly GraphTokenProvider _tokens;
+    private WellKnownFolders? _folders;
+    private MailboxCapabilities _capabilities = new("Outlook", "category", "categories", true, true,
+        "Archive-eligible messages are moved to the Archive folder.");
 
     public GraphMailClient(HttpClient http, GraphTokenProvider tokens)
     {
@@ -61,9 +55,11 @@ public sealed class GraphMailClient
         _tokens = tokens;
     }
 
+    public MailboxCapabilities Capabilities => _capabilities;
+
     // ----- Identity ---------------------------------------------------------
 
-    public async Task<string> GetSignedInUserAsync(CancellationToken ct)
+    public async Task<string> GetIdentityAsync(CancellationToken ct)
     {
         using var response = await SendAsync(HttpMethod.Get, "/me?$select=displayName,mail,userPrincipalName", null, null, ct);
         var json = await ReadJsonAsync(response, ct);
@@ -75,8 +71,16 @@ public sealed class GraphMailClient
 
     // ----- Folders ----------------------------------------------------------
 
+    public async Task<MailboxCapabilities> ConnectAsync(CancellationToken ct)
+    {
+        var folders = await GetWellKnownFoldersAsync(ct);
+        _capabilities = _capabilities with { CanArchive = folders.Archive is not null };
+        return _capabilities;
+    }
+
     public async Task<WellKnownFolders> GetWellKnownFoldersAsync(CancellationToken ct)
     {
+        if (_folders is not null) return _folders;
         var requests = new List<BatchRequest>();
         foreach (var name in new[] { "inbox", "archive", "junkemail", "deleteditems", "drafts", "sentitems" })
         {
@@ -84,8 +88,9 @@ public sealed class GraphMailClient
         }
         var parts = await SendBatchAsync(requests, ct);
         string? IdOf(int index) => parts[index].Ok ? MessageMetadata.GetString(parts[index].Body, "id") : null;
-        var inbox = IdOf(0) ?? throw new InvalidOperationException("The Inbox folder could not be resolved: " + parts[0].Error);
-        return new WellKnownFolders(inbox, IdOf(1), IdOf(2), IdOf(3), IdOf(4), IdOf(5));
+        var inbox = IdOf(0) ?? throw new GraphRequestException((HttpStatusCode)parts[0].Status, "The Inbox folder could not be resolved: " + parts[0].Error);
+        _folders = new WellKnownFolders(inbox, IdOf(1), IdOf(2), IdOf(3), IdOf(4), IdOf(5));
+        return _folders;
     }
 
     /// <summary>Exact counts for the Inbox; approximate ($count) for the whole mailbox; -1 when unknown.</summary>
@@ -114,14 +119,25 @@ public sealed class GraphMailClient
 
     // ----- Listing ------------------------------------------------------------
 
+    public Task<string> GetInitialCursorAsync(string scope, CancellationToken ct) =>
+        Task.FromResult(FormatSortKey(DateTimeOffset.UtcNow.AddMinutes(5)));
+
+    public static string FormatSortKey(DateTimeOffset when) => when.ToUniversalTime().ToString(SortKeyFormat, CultureInfo.InvariantCulture);
+
+    public static DateTimeOffset ParseSortKey(string key) =>
+        DateTimeOffset.TryParse(key, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var when)
+            ? when
+            : throw new MailboxException(false, $"The listing cursor '{key}' is not a valid timestamp. Clear the session and start again.");
+
     /// <summary>
     /// Newest-first page bounded by a receivedDateTime cursor. The caller keeps
     /// the ids seen at the boundary timestamp so ties are never lost or repeated.
     /// </summary>
-    public async Task<ListPage> ListMessagesAsync(string scope, bool unreadOnly, DateTimeOffset cursor, bool exclusive, int top, CancellationToken ct)
+    public async Task<ListPage> ListMessagesAsync(string scope, bool unreadOnly, string cursor, bool exclusive, int top, CancellationToken ct)
     {
+        var folders = await GetWellKnownFoldersAsync(ct);
         var path = scope == "inbox" ? "/me/mailFolders/inbox/messages" : "/me/messages";
-        var filter = BuildFilter(unreadOnly, cursor, exclusive);
+        var filter = BuildFilter(unreadOnly, ParseSortKey(cursor), exclusive);
         var url = $"{path}?$select={ListSelect}&$orderby={Uri.EscapeDataString("receivedDateTime desc")}&$top={top}&$filter={Uri.EscapeDataString(filter)}";
         using var response = await SendAsync(HttpMethod.Get, url, null, null, ct);
         var json = await ReadJsonAsync(response, ct);
@@ -133,8 +149,8 @@ public sealed class GraphMailClient
                 var id = MessageMetadata.GetString(message, "id");
                 var received = MessageMetadata.GetString(message, "receivedDateTime");
                 if (id.Length == 0 || !DateTimeOffset.TryParse(received, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var when)) continue;
-                items.Add(new MessageRef(id, when, MessageMetadata.ReadCategories(message),
-                    MessageMetadata.GetString(message, "parentFolderId"),
+                items.Add(new MessageRef(id, FormatSortKey(when), MessageMetadata.ReadCategories(message),
+                    folders.IsExcluded(MessageMetadata.GetString(message, "parentFolderId")),
                     message.TryGetProperty("isRead", out var isRead) && isRead.ValueKind == JsonValueKind.True));
             }
         }
@@ -143,7 +159,7 @@ public sealed class GraphMailClient
 
     public static string BuildFilter(bool unreadOnly, DateTimeOffset cursor, bool exclusive = false)
     {
-        var stamp = cursor.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+        var stamp = FormatSortKey(cursor);
         var filter = $"receivedDateTime {(exclusive ? "lt" : "le")} {stamp}";
         if (unreadOnly) filter += " and isRead eq false";
         return filter;
@@ -152,7 +168,7 @@ public sealed class GraphMailClient
     // ----- Batched reads --------------------------------------------------------
 
     /// <summary>Read many messages through Graph JSON batching; result order matches <paramref name="ids"/>.</summary>
-    public async Task<List<BatchPart>> ReadMessagesAsync(IReadOnlyList<string> ids, ReadMode mode, CancellationToken ct)
+    public async Task<List<ReadPart>> ReadMessagesAsync(IReadOnlyList<string> ids, ReadMode mode, CancellationToken ct)
     {
         var select = mode switch { ReadMode.Metadata => MetadataSelect, ReadMode.Full => FullSelect, _ => "id,categories" };
         var headers = mode == ReadMode.Full
@@ -160,7 +176,32 @@ public sealed class GraphMailClient
             : null;
         var requests = ids.Select((id, index) =>
             new BatchRequest(index.ToString(CultureInfo.InvariantCulture), "GET", $"/me/messages/{Uri.EscapeDataString(id)}?$select={select}", headers)).ToList();
-        return await SendBatchesAsync(requests, ct);
+        var parts = await SendBatchesAsync(requests, ct);
+        return parts.Select(part => ToReadPart(part, mode)).ToList();
+    }
+
+    private static ReadPart ToReadPart(BatchPart part, ReadMode mode)
+    {
+        if (!part.Ok)
+        {
+            if (part.Status == 404) return ReadPart.Missing();
+            return new ReadPart { Ok = false, Retryable = part.Retryable, AuthFailure = part.AuthFailure, RetryAfterMs = part.RetryAfterMs, Error = part.Error.Length > 0 ? part.Error : $"HTTP {part.Status}" };
+        }
+        switch (mode)
+        {
+            case ReadMode.Metadata:
+            {
+                var metadata = MessageMetadata.FromGraph(part.Body);
+                return new ReadPart { Ok = true, Metadata = metadata, Labels = metadata.Categories };
+            }
+            case ReadMode.Full:
+            {
+                var (text, reason) = MessageContent.Extract(part.Body);
+                return new ReadPart { Ok = true, FullText = text, FullReason = reason };
+            }
+            default:
+                return new ReadPart { Ok = true, Labels = MessageMetadata.ReadCategories(part.Body) };
+        }
     }
 
     // ----- Categories -------------------------------------------------------------
@@ -169,7 +210,7 @@ public sealed class GraphMailClient
     /// Make sure every category exists in the master list (so it has a colour in
     /// Outlook). Returns the stored display names keyed by lower-case name.
     /// </summary>
-    public async Task<Dictionary<string, string>> EnsureMasterCategoriesAsync(IReadOnlyList<(string Name, string Color)> wanted, CancellationToken ct)
+    public async Task<Dictionary<string, string>> EnsureLabelsAsync(IReadOnlyList<string> names, CancellationToken ct)
     {
         var existing = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var next = "/me/outlook/masterCategories";
@@ -189,9 +230,11 @@ public sealed class GraphMailClient
             next = link.StartsWith(AppConstants.GraphBaseUrl, StringComparison.OrdinalIgnoreCase) ? link[AppConstants.GraphBaseUrl.Length..] : null;
         }
 
-        foreach (var (name, color) in wanted)
+        for (var i = 0; i < names.Count; i++)
         {
+            var name = names[i];
             if (existing.ContainsKey(name)) continue;
+            var color = AppConstants.CategoryColorPresets[i % AppConstants.CategoryColorPresets.Length];
             var body = new JsonObject { ["displayName"] = name, ["color"] = color };
             try
             {
@@ -205,24 +248,69 @@ public sealed class GraphMailClient
         }
 
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, _) in wanted) result[name.ToLowerInvariant()] = existing[name];
+        foreach (var name in names) result[name.ToLowerInvariant()] = existing[name];
         return result;
+    }
+
+    // ----- Category cleanup -------------------------------------------------------------
+
+    /// <summary>Ids (+ current categories) of up to <paramref name="top"/> messages carrying <paramref name="label"/>, anywhere in the mailbox.</summary>
+    public async Task<List<(string Id, IReadOnlyList<string> Labels)>> FindMessagesWithLabelAsync(string label, int top, CancellationToken ct)
+    {
+        var filter = $"categories/any(c:c eq '{label.Replace("'", "''")}')";
+        var url = $"/me/messages?$select=id,categories&$top={top}&$filter={Uri.EscapeDataString(filter)}";
+        using var response = await SendAsync(HttpMethod.Get, url, null, null, ct);
+        var json = await ReadJsonAsync(response, ct);
+        var items = new List<(string, IReadOnlyList<string>)>();
+        if (json.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var message in value.EnumerateArray())
+            {
+                var id = MessageMetadata.GetString(message, "id");
+                if (id.Length > 0) items.Add((id, MessageMetadata.ReadCategories(message)));
+            }
+        }
+        return items;
+    }
+
+    /// <summary>Delete a category from the master list (messages keep the name until they are patched).</summary>
+    public async Task<bool> DeleteLabelAsync(string label, CancellationToken ct)
+    {
+        var next = "/me/outlook/masterCategories";
+        for (var pages = 0; next is not null && pages < 50; pages++)
+        {
+            using var response = await SendAsync(HttpMethod.Get, next, null, null, ct);
+            var json = await ReadJsonAsync(response, ct);
+            if (json.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in value.EnumerateArray())
+                {
+                    if (!string.Equals(MessageMetadata.GetString(entry, "displayName"), label, StringComparison.OrdinalIgnoreCase)) continue;
+                    var id = MessageMetadata.GetString(entry, "id");
+                    using var deleted = await SendAsync(HttpMethod.Delete, $"/me/outlook/masterCategories/{Uri.EscapeDataString(id)}", null, null, ct);
+                    return true;
+                }
+            }
+            var link = MessageMetadata.GetString(json, "@odata.nextLink");
+            next = link.StartsWith(AppConstants.GraphBaseUrl, StringComparison.OrdinalIgnoreCase) ? link[AppConstants.GraphBaseUrl.Length..] : null;
+        }
+        return false;
     }
 
     // ----- Writes ---------------------------------------------------------------------
 
     /// <summary>Replace the category list of each message (idempotent; a vanished message counts as done).</summary>
-    public Task<WriteOutcome> PatchCategoriesAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Categories)> updates, CancellationToken ct)
+    public Task<WriteOutcome> ApplyLabelsAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Labels)> updates, CancellationToken ct)
     {
         var requests = updates.Select((u, index) => new BatchRequest(
             index.ToString(CultureInfo.InvariantCulture), "PATCH", $"/me/messages/{Uri.EscapeDataString(u.Id)}",
             new Dictionary<string, string> { ["Content-Type"] = "application/json" },
-            new JsonObject { ["categories"] = new JsonArray(u.Categories.Select(c => (JsonNode)JsonValue.Create(c)!).ToArray()) })).ToList();
+            new JsonObject { ["categories"] = new JsonArray(u.Labels.Select(c => (JsonNode)JsonValue.Create(c)!).ToArray()) })).ToList();
         return ExecuteWritesAsync(requests, "update categories", ct);
     }
 
     /// <summary>Move messages to the well-known Archive folder (the Outlook equivalent of removing INBOX).</summary>
-    public Task<WriteOutcome> MoveToArchiveAsync(IReadOnlyList<string> ids, CancellationToken ct)
+    public Task<WriteOutcome> ArchiveAsync(IReadOnlyList<string> ids, CancellationToken ct)
     {
         var requests = ids.Select((id, index) => new BatchRequest(
             index.ToString(CultureInfo.InvariantCulture), "POST", $"/me/messages/{Uri.EscapeDataString(id)}/move",
@@ -231,33 +319,45 @@ public sealed class GraphMailClient
         return ExecuteWritesAsync(requests, "archive", ct);
     }
 
+    /// <summary>
+    /// Grouped idempotent writes. Exchange throttles writes far harder than reads, so
+    /// batches go out one at a time and throttled requests are retried with the
+    /// server's Retry-After (or an exponential fallback) up to <see cref="AppConstants.GraphWriteRetries"/> times.
+    /// </summary>
     private async Task<WriteOutcome> ExecuteWritesAsync(List<BatchRequest> requests, string action, CancellationToken ct)
     {
         if (requests.Count == 0) return WriteOutcome.Success;
         var pending = requests;
         for (var attempt = 0; ; attempt++)
         {
-            var parts = await SendBatchesAsync(pending, ct);
+            var parts = new List<BatchPart>();
+            foreach (var chunk in pending.Chunk(AppConstants.GraphBatchRequestLimit))
+            {
+                parts.AddRange(await SendBatchAsync(chunk, ct));
+            }
             var retry = new List<BatchRequest>();
-            var retryAfter = AppConstants.GraphRetryDelayMs;
+            var retryAfter = 0;
+            var lastStatus = 0;
             for (var i = 0; i < pending.Count; i++)
             {
                 var part = parts[i];
                 if (part.Ok || part.Status == 404) continue; // 404: message moved/deleted meanwhile — nothing left to do
                 if (part.AuthFailure)
-                    return new WriteOutcome(false, false, "Microsoft Graph authorization failed while trying to " + action + " messages. Sign in again (jevoutlook auth).");
+                    return new WriteOutcome(false, false, "Microsoft Graph authorization failed while trying to " + action + " messages. Sign in again (jevoutlook account login).");
                 if (!part.Retryable)
                     return new WriteOutcome(false, false, $"Microsoft Graph rejected a request to {action} a message with HTTP {part.Status}. {part.Error}".Trim());
                 retryAfter = Math.Max(retryAfter, part.RetryAfterMs);
+                lastStatus = part.Status;
                 retry.Add(pending[i]);
             }
             if (retry.Count == 0) return WriteOutcome.Success;
-            if (attempt >= AppConstants.NetworkRetries)
+            if (attempt >= AppConstants.GraphWriteRetries)
             {
                 return new WriteOutcome(false, true,
-                    $"Microsoft Graph is temporarily rate-limiting or unavailable ({retry.Count} {action} request(s) failed).");
+                    $"Microsoft Graph is temporarily rate-limiting or unavailable ({retry.Count} {action} request(s) still failing with HTTP {lastStatus} after {attempt} retries).");
             }
-            await Task.Delay(Math.Min(AppConstants.MaxGraphRetryDelayMs, retryAfter), ct);
+            var fallback = AppConstants.GraphRetryDelayMs * (1 << attempt) * 2; // 1 s, 2 s, 4 s, 8 s, 16 s
+            await Task.Delay(Math.Min(AppConstants.MaxGraphWriteRetryDelayMs, Math.Max(retryAfter, fallback)), ct);
             pending = retry;
         }
     }
@@ -313,6 +413,7 @@ public sealed class GraphMailClient
             {
                 var retryable = IsTransient(status);
                 var retryAfter = RetryAfterMs(response.Headers);
+                Debug($"$batch itself returned HTTP {status} (Retry-After {retryAfter} ms) for {requests.Count} request(s)");
                 return requests.Select(_ => new BatchPart { Ok = false, Status = status, Retryable = retryable, RetryAfterMs = retryAfter, Error = $"Graph batch returned HTTP {status}." }).ToList();
             }
 
@@ -345,6 +446,13 @@ public sealed class GraphMailClient
                         Error = ok ? string.Empty : ExtractGraphError(body, innerStatus),
                     };
                 }
+            }
+            if (DebugEnabled)
+            {
+                var failed = byId.Values.Where(p => !p.Ok && p.Status != 404).ToList();
+                if (failed.Count > 0)
+                    Debug($"$batch of {requests.Count} ({requests[0].Method}): {failed.Count} failed — " +
+                          string.Join("; ", failed.GroupBy(p => p.Status).Select(g => $"HTTP {g.Key} ×{g.Count()} Retry-After {g.Max(p => p.RetryAfterMs)} ms: {g.First().Error}")));
             }
 
             return requests.Select(r => byId.TryGetValue(r.Id, out var part)
@@ -388,9 +496,10 @@ public sealed class GraphMailClient
             }
 
             var status = (int)response.StatusCode;
-            if (throwOnError && attempt < AppConstants.NetworkRetries && IsTransient(status))
+            if (throwOnError && attempt < AppConstants.GraphReadRetries && IsTransient(status))
             {
-                var delay = Math.Min(AppConstants.MaxGraphRetryDelayMs, Math.Max(AppConstants.GraphRetryDelayMs, RetryAfterMs(response.Headers)));
+                Debug($"HTTP {status} on {method} {relativeUrl} (Retry-After {RetryAfterMs(response.Headers)} ms), attempt {attempt + 1}");
+                var delay = Math.Min(AppConstants.MaxGraphRetryDelayMs, Math.Max(AppConstants.GraphRetryDelayMs * (1 << attempt) * 2, RetryAfterMs(response.Headers)));
                 response.Dispose();
                 await Task.Delay(delay, ct);
                 continue;
@@ -415,6 +524,13 @@ public sealed class GraphMailClient
     }
 
     public static bool IsTransient(int status) => status == 408 || status == 409 || status == 425 || status == 429 || status >= 500 || status == 0;
+
+    private static readonly bool DebugEnabled = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JEVOUTLOOK_DEBUG"));
+
+    private static void Debug(string message)
+    {
+        if (DebugEnabled) Console.Error.WriteLine($"[graph {DateTime.Now:HH:mm:ss}] {message}");
+    }
 
     private static int RetryAfterMs(HttpResponseHeaders headers)
     {
@@ -446,10 +562,8 @@ public sealed class GraphMailClient
     }
 }
 
-public sealed class GraphRequestException(HttpStatusCode status, string message) : Exception(message)
+public sealed class GraphRequestException(HttpStatusCode status, string message)
+    : MailboxException(GraphMailClient.IsTransient((int)status), message)
 {
     public HttpStatusCode Status { get; } = status;
-
-    /// <summary>Rate limiting, server errors and transport failures: safe to pause and continue later.</summary>
-    public bool IsTransient => GraphMailClient.IsTransient((int)Status);
 }

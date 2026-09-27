@@ -50,6 +50,9 @@ public sealed class TriageJob
     public long FinishedAt { get; set; }
     public string Status { get; set; } = JobStatus.Running;
     public string SignedInAs { get; set; } = string.Empty;
+    public string AccountId { get; set; } = string.Empty;
+    /// <summary>"Outlook", "Gmail" or "IMAP" — for wording only.</summary>
+    public string Provider { get; set; } = string.Empty;
 
     // Options frozen at start
     public string Scope { get; set; } = "inbox";
@@ -62,8 +65,8 @@ public sealed class TriageJob
     /// <summary>null = all matching messages.</summary>
     public int? Limit { get; set; }
 
-    // Listing cursor (newest-first)
-    public DateTimeOffset Cursor { get; set; }
+    // Listing cursor (newest-first): the provider's sort key (Graph: ISO timestamp; IMAP: zero-padded UID)
+    public string Cursor { get; set; } = string.Empty;
     public List<string> CursorBoundaryIds { get; set; } = [];
     /// <summary>True when a whole page shared the cursor timestamp: the next query uses <c>lt</c> instead of <c>le</c>.</summary>
     public bool CursorExclusive { get; set; }

@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
-using JevOutlook.Graph;
+using JevOutlook.Mail;
 using JevOutlook.Jev;
 using JevOutlook.Rules;
 using JevOutlook.Storage;
@@ -8,26 +8,44 @@ using JevOutlook.Storage;
 namespace JevOutlook.Triage;
 
 /// <summary>
-/// Two-stage, confidence-aware classification of Outlook messages:
+/// Two-stage, confidence-aware classification of mailbox messages (Outlook, Gmail or IMAP):
 /// 1) classify every message from metadata (headers + preview);
 /// 2) classify only low-confidence / archive-sensitive messages from full content.
-/// Every model decision is checkpointed before Outlook is modified, and Outlook
+/// Every model decision is checkpointed before the mailbox is modified, and mailbox
 /// writes are idempotent so a replay after an interruption never pays twice.
 /// </summary>
 public sealed class TriageEngine
 {
-    private readonly GraphMailClient _graph;
+    private readonly IMailbox _mailbox;
+    private readonly JobStore _store;
     private readonly JevClient _jev;
     private readonly string _model;
-    private readonly ITriageSink _sink;
+    private ITriageSink _sink;
 
-    public TriageEngine(GraphMailClient graph, JevClient jev, string model, ITriageSink sink)
+    // Per-session context resolved once (rules frozen for the job, folder ids, category names).
+    private string? _contextJobId;
+    private IReadOnlyList<LabelRule>? _contextRules;
+    private MailboxCapabilities? _contextCaps;
+    private Dictionary<string, string>? _contextCategoryNames;
+
+    public TriageEngine(IMailbox mailbox, JobStore store, JevClient jev, string model, ITriageSink sink)
     {
-        _graph = graph;
+        _mailbox = mailbox;
+        _store = store;
         _jev = jev;
         _model = model;
         _sink = sink;
     }
+
+    /// <summary>Where events and results go. The web UI swaps in a collecting sink per request.</summary>
+    public ITriageSink Sink { get => _sink; set => _sink = value; }
+
+    public JobStore Store => _store;
+    public IMailbox Mailbox => _mailbox;
+
+    private string Provider => (_contextCaps ?? _mailbox.Capabilities).ProviderName;
+    private string LabelNoun => (_contextCaps ?? _mailbox.Capabilities).LabelNoun;
+    private string LabelNouns => (_contextCaps ?? _mailbox.Capabilities).LabelNounPlural;
 
     // =====================================================================
     // Session lifecycle
@@ -35,31 +53,38 @@ public sealed class TriageEngine
 
     public async Task<TriageJob> StartAsync(RunOptions options, IReadOnlyList<LabelRule> rules, CancellationToken ct)
     {
-        var existing = JobStore.Load();
+        var existing = _store.Load();
         if (existing is { Status: JobStatus.Running })
         {
             throw new InvalidOperationException("A processing session is already active. Stop or continue it before starting another (jevoutlook status).");
         }
 
         var normalizedRules = RuleStore.Save(rules);
-        var signedInAs = await _graph.GetSignedInUserAsync(ct);
-        var folders = await _graph.GetWellKnownFoldersAsync(ct);
-        if (!options.DryRun && options.Mode == RunMode.LabelsArchive && folders.Archive is null)
+        var signedInAs = await _mailbox.GetIdentityAsync(ct);
+        var caps = await _mailbox.ConnectAsync(ct);
+        _contextCaps = caps;
+        if (options.Scope == "all" && !caps.SupportsAllScope)
         {
-            throw new InvalidOperationException("This mailbox has no Archive folder, so archive mode cannot be used. Run in labels-only mode.");
+            throw new InvalidOperationException($"This {caps.ProviderName} mailbox can only be scanned folder by folder: use the Inbox scope.");
+        }
+        if (!options.DryRun && options.Mode == RunMode.LabelsArchive && !caps.CanArchive)
+        {
+            throw new InvalidOperationException("This mailbox has no archive destination, so archive mode cannot be used. Run in labels-only mode.");
         }
         if (!options.DryRun)
         {
             await EnsureCategoriesAsync(normalizedRules, ct);
         }
 
-        var estimate = await _graph.EstimateAsync(options.Scope, options.UnreadOnly, ct);
+        var estimate = await _mailbox.EstimateAsync(options.Scope, options.UnreadOnly, ct);
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var job = new TriageJob
         {
             CreatedAt = now,
             UpdatedAt = now,
             SignedInAs = signedInAs,
+            AccountId = _store.AccountId,
+            Provider = caps.ProviderName,
             Scope = options.Scope,
             UnreadOnly = options.UnreadOnly,
             DryRun = options.DryRun,
@@ -68,7 +93,7 @@ public sealed class TriageEngine
             MetadataThreshold = options.MetadataThreshold,
             ArchiveThreshold = options.ArchiveThreshold,
             Limit = options.Limit,
-            Cursor = DateTimeOffset.UtcNow.AddMinutes(5),
+            Cursor = await _mailbox.GetInitialCursorAsync(options.Scope, ct),
             InitialEstimate = estimate,
             Target = options.Limit is { } limit
                 ? (estimate >= 0 ? Math.Min(limit, estimate) : limit)
@@ -77,17 +102,22 @@ public sealed class TriageEngine
         };
         foreach (var rule in normalizedRules) job.LabelCounts[rule.Id] = 0;
 
-        RuleStore.SaveJobRules(normalizedRules);
-        JobStore.Save(job);
+        _store.SaveRules(normalizedRules);
+        _store.Save(job);
 
         var found = estimate >= 0 ? $"Found about {estimate} matching messages." : "The number of matching messages is unknown.";
         _sink.Event("info", $"{found} Messages selected for processing: {(options.Limit is { } l ? l.ToString(CultureInfo.InvariantCulture) : "all")}.");
+        _sink.Event(options.DryRun ? "info" : "warn", options.DryRun
+            ? $"PREVIEW mode: messages are classified but nothing is changed in {caps.ProviderName}."
+            : options.Mode == RunMode.LabelsArchive
+                ? $"LIVE mode: {caps.LabelNounPlural} are applied in {caps.ProviderName} and archive-eligible messages above the archive threshold are archived. {caps.ArchiveDescription}"
+                : $"LIVE mode: {caps.LabelNounPlural} are applied in {caps.ProviderName} (no archiving).");
         return job;
     }
 
-    public static TriageJob Resume(double? newMaxSpend)
+    public TriageJob Resume(double? newMaxSpend)
     {
-        var job = JobStore.Load() ?? throw new InvalidOperationException("There is no processing session to continue. Start one with: jevoutlook run");
+        var job = _store.Load() ?? throw new InvalidOperationException("There is no processing session to continue. Start one with: jevoutlook run");
         if (job.Status is JobStatus.Completed or JobStatus.Cancelled)
             throw new InvalidOperationException("This processing session is already finished. Start a new session to continue.");
         if (job.Status == JobStatus.Budget)
@@ -105,23 +135,35 @@ public sealed class TriageEngine
         job.StopReason = string.Empty;
         job.LastError = string.Empty;
         job.ConsecutiveJevFailures = 0; // re-arm the circuit breaker: the user chose to try again
-        JobStore.Save(job);
+        _store.Save(job);
         return job;
+    }
+
+    /// <summary>
+    /// Process exactly one batch of the session (the counterpart of jevMail's
+    /// <c>processNextBatch</c>, called repeatedly by the CLI loop or the web UI).
+    /// </summary>
+    public async Task ProcessBatchAsync(TriageJob job, CancellationToken ct)
+    {
+        if (_contextJobId != job.Id || _contextRules is null || _contextCaps is null)
+        {
+            _contextRules = _store.LoadRules();
+            _contextCaps = await _mailbox.ConnectAsync(ct);
+            _contextCategoryNames = job.DryRun ? null : await EnsureCategoriesAsync(_contextRules, ct);
+            _contextJobId = job.Id;
+        }
+        await ProcessNextBatchAsync(job, _contextRules, _contextCategoryNames, ct);
     }
 
     /// <summary>Process batches until the session completes, pauses, hits its budget, fails or is cancelled.</summary>
     public async Task RunLoopAsync(TriageJob job, CancellationToken ct)
     {
-        var rules = RuleStore.LoadJobRules();
-        var folders = await _graph.GetWellKnownFoldersAsync(ct);
-        var categoryNames = job.DryRun ? null : await EnsureCategoriesAsync(rules, ct);
-
         while (job.IsRunning)
         {
             try
             {
                 ct.ThrowIfCancellationRequested();
-                await ProcessNextBatchAsync(job, rules, folders, categoryNames, ct);
+                await ProcessBatchAsync(job, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -131,7 +173,7 @@ public sealed class TriageEngine
                     job.StopReason = "user-stop";
                 }
                 CloseTiming(job);
-                JobStore.Save(job);
+                _store.Save(job);
                 _sink.Event("warn", "Processing stopped. All decisions are checkpointed; run 'jevoutlook continue' to resume.");
                 return;
             }
@@ -139,16 +181,8 @@ public sealed class TriageEngine
         }
     }
 
-    private async Task<Dictionary<string, string>> EnsureCategoriesAsync(IReadOnlyList<LabelRule> rules, CancellationToken ct)
-    {
-        var wanted = new List<(string, string)>();
-        for (var i = 0; i < rules.Count; i++)
-        {
-            wanted.Add((rules[i].Name, AppConstants.CategoryColorPresets[i % AppConstants.CategoryColorPresets.Length]));
-        }
-        wanted.Add((AppConstants.TechnicalTriagedCategory, "none"));
-        return await _graph.EnsureMasterCategoriesAsync(wanted, ct);
-    }
+    private Task<Dictionary<string, string>> EnsureCategoriesAsync(IReadOnlyList<LabelRule> rules, CancellationToken ct) =>
+        _mailbox.EnsureLabelsAsync(rules.Select(r => r.Name).ToList(), ct);
 
     // =====================================================================
     // One batch
@@ -166,7 +200,7 @@ public sealed class TriageEngine
 
     private sealed record FinalResult(PendingItem Item, LabelRule Rule, double Confidence, string Stage, bool Archive);
 
-    private async Task ProcessNextBatchAsync(TriageJob job, IReadOnlyList<LabelRule> rules, WellKnownFolders folders,
+    private async Task ProcessNextBatchAsync(TriageJob job, IReadOnlyList<LabelRule> rules,
         Dictionary<string, string>? categoryNames, CancellationToken ct)
     {
         job.ActiveStartedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -183,10 +217,10 @@ public sealed class TriageEngine
                 else
                 {
                     var wanted = Math.Min(AppConstants.BatchSize, job.Limit is { } l ? l - job.HandledCount : AppConstants.BatchSize);
-                    await FillPendingAsync(job, wanted, folders, ct);
+                    await FillPendingAsync(job, wanted, ct);
                     if (job.Pending.Count == 0 && job.IsRunning) Complete(job, "no-more-messages");
                 }
-                JobStore.Save(job);
+                _store.Save(job);
             }
 
             if (!job.IsRunning) return;
@@ -198,13 +232,13 @@ public sealed class TriageEngine
 
             foreach (var item in snapshot)
             {
-                if (!metadataRead.Messages.TryGetValue(item.Id, out var message)) continue;
-                var metadata = MessageMetadata.FromGraph(message);
+                if (!metadataRead.Messages.TryGetValue(item.Id, out var message) || message.Metadata is null) continue;
+                var metadata = message.Metadata;
                 metadataById[item.Id] = metadata;
-                // A pending item with a final decision may already carry the marker if an
-                // earlier grouped write partly succeeded before its checkpoint. Keep it and
+                // A pending item with a final decision may already carry a configured category if
+                // an earlier grouped write partly succeeded before its checkpoint. Keep it and
                 // replay the idempotent write so counters can advance.
-                if (!job.DryRun && item.Final is null && HasMarker(metadata.Categories))
+                if (!job.DryRun && item.Final is null && HasConfiguredCategory(metadata.Categories, rules))
                 {
                     RemovePending(job, item.Id);
                 }
@@ -242,7 +276,7 @@ public sealed class TriageEngine
                         request.Item.MetadataResult = new Decision { RuleId = ok.RuleId!, Confidence = ok.Confidence, Stage = "metadata" };
                     }
                 }
-                JobStore.Save(job);
+                _store.Save(job);
 
                 foreach (var request in metadataRequests)
                 {
@@ -287,7 +321,7 @@ public sealed class TriageEngine
                         if (!job.Pending.Any(p => p.Id == item.Id)) continue;
                         if (!fullRead.Messages.TryGetValue(item.Id, out var full)) continue;
                         var metadata = metadataById.GetValueOrDefault(item.Id) ?? MessageMetadata.Empty(item.Id);
-                        var (text, reason) = MessageContent.Extract(full);
+                        var (text, reason) = (full.FullText, full.FullReason);
                         var body = MessageContent.Compact(text);
 
                         if (body.Length == 0)
@@ -311,7 +345,7 @@ public sealed class TriageEngine
                         fullRequests.Add(CreateWaveRequest(item, metadata, rules, "full", body));
                     }
                 }
-                JobStore.Save(job);
+                _store.Save(job);
 
                 if (job.IsRunning && fullRequests.Count > 0)
                 {
@@ -324,7 +358,7 @@ public sealed class TriageEngine
                             request.Item.MetadataResult = null;
                         }
                     }
-                    JobStore.Save(job);
+                    _store.Save(job);
 
                     foreach (var request in fullRequests)
                     {
@@ -353,18 +387,18 @@ public sealed class TriageEngine
 
             if (finalized.Count > 0 && !job.DryRun)
             {
-                var outcome = await ApplyFinalResultsAsync(finalized, metadataById, categoryNames!, ct);
+                var outcome = await ApplyFinalResultsAsync(job, finalized, metadataById, categoryNames!, ct);
                 if (!outcome.Ok)
                 {
                     if (!outcome.Retryable) throw new InvalidOperationException(outcome.Error);
                     job.Status = JobStatus.Paused;
-                    job.StopReason = "graph-temporary";
+                    job.StopReason = "mailbox-temporary";
                     job.LastError = outcome.Error;
                     _sink.Event("warn", outcome.Error + " Processing is paused and all decisions are checkpointed. Continue later to retry safely.");
                 }
             }
 
-            if (job.DryRun || job.Status != JobStatus.Paused || job.StopReason != "graph-temporary")
+            if (job.DryRun || job.Status != JobStatus.Paused || job.StopReason != "mailbox-temporary")
             {
                 foreach (var final in finalized)
                 {
@@ -383,7 +417,7 @@ public sealed class TriageEngine
                 }
                 if (readyItems.Count > 0) job.Pending.RemoveRange(0, readyItems.Count);
                 job.Target = Math.Max(job.Target, job.HandledCount + job.Pending.Count);
-                JobStore.Save(job);
+                _store.Save(job);
             }
 
             if (budgetBlocked && job.IsRunning)
@@ -398,7 +432,13 @@ public sealed class TriageEngine
                 else if (job.Exhausted) Complete(job, "no-more-messages");
             }
 
-            if (job.Status == JobStatus.Completed) job.Target = job.HandledCount;
+            if (job.Status == JobStatus.Completed)
+            {
+                job.Target = job.HandledCount;
+                _sink.Event("info", job.DryRun
+                    ? $"Preview completed: {job.Processed} message(s) classified, no {Provider} changes were made."
+                    : $"Live run completed: {job.Processed} message(s) categorized in {Provider}, {job.Archived} archived.");
+            }
             if (job.Status == JobStatus.Budget)
             {
                 _sink.Event("warn", "The cost limit prevents the next model request. Unfinished messages remain unchanged.");
@@ -412,11 +452,11 @@ public sealed class TriageEngine
         {
             throw;
         }
-        catch (GraphRequestException transient) when (transient.IsTransient)
+        catch (MailboxException transient) when (transient.IsTransient)
         {
             job.Status = JobStatus.Paused;
-            job.StopReason = "graph-temporary";
-            job.LastError = Clip(transient.Message, "Microsoft Graph is temporarily unavailable.", 500);
+            job.StopReason = "mailbox-temporary";
+            job.LastError = Clip(transient.Message, $"{Provider} is temporarily unavailable.", 500);
             _sink.Event("warn", job.LastError + " Processing is paused and all decisions are checkpointed. Continue later to retry safely.");
         }
         catch (Exception error)
@@ -430,7 +470,7 @@ public sealed class TriageEngine
         finally
         {
             CloseTiming(job);
-            JobStore.Save(job);
+            _store.Save(job);
             foreach (var row in results) _sink.Result(row);
         }
     }
@@ -476,22 +516,23 @@ public sealed class TriageEngine
     /// messages. The cursor only advances over messages that were actually examined, so
     /// nothing is lost when a page contains more candidates than needed.
     /// </summary>
-    private async Task FillPendingAsync(TriageJob job, int wanted, WellKnownFolders folders, CancellationToken ct)
+    private async Task FillPendingAsync(TriageJob job, int wanted, CancellationToken ct)
     {
         var collected = new List<PendingItem>();
         var skippedLookup = new HashSet<string>(job.SkippedMessageIds, StringComparer.Ordinal);
         var guard = 0;
 
+        var rules = _contextRules ?? _store.LoadRules();
         bool Eligible(MessageRef item) =>
-            !(job.Scope == "all" && folders.IsExcluded(item.ParentFolderId)) &&
+            !(job.Scope == "all" && item.Excluded) &&
             !skippedLookup.Contains(item.Id) &&
-            !HasMarker(item.Categories);
+            !HasConfiguredCategory(item.Labels, rules);
 
         while (collected.Count < wanted && !job.Exhausted && guard < MaxScanPagesPerBatch)
         {
             guard += 1;
             var top = Math.Clamp(wanted - collected.Count + job.CursorBoundaryIds.Count + skippedLookup.Count, 20, 200);
-            var page = await _graph.ListMessagesAsync(job.Scope, job.UnreadOnly, job.Cursor, job.CursorExclusive, top, ct);
+            var page = await _mailbox.ListMessagesAsync(job.Scope, job.UnreadOnly, job.Cursor, job.CursorExclusive, top, ct);
             ExaminePage(job, page, wanted, Eligible, collected);
         }
 
@@ -532,13 +573,13 @@ public sealed class TriageEngine
             if (collected.Count >= wanted) { stoppedEarly = true; break; }
 
             examined += 1;
-            if (item.ReceivedDateTime == job.Cursor && !job.CursorExclusive)
+            if (item.SortKey == job.Cursor && !job.CursorExclusive)
             {
                 job.CursorBoundaryIds.Add(item.Id);
             }
             else
             {
-                job.Cursor = item.ReceivedDateTime;
+                job.Cursor = item.SortKey;
                 job.CursorBoundaryIds = [item.Id];
                 job.CursorExclusive = false;
             }
@@ -560,18 +601,22 @@ public sealed class TriageEngine
         }
     }
 
-    private static bool HasMarker(IEnumerable<string> categories) =>
-        categories.Any(c => string.Equals(c, AppConstants.TechnicalTriagedCategory, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// A message that already carries one of the configured categories was processed by an
+    /// earlier run (or filed by hand): later runs skip it. Remove the category to reprocess.
+    /// </summary>
+    internal static bool HasConfiguredCategory(IEnumerable<string> categories, IReadOnlyList<LabelRule> rules) =>
+        categories.Any(c => rules.Any(r => string.Equals(c, r.Name, StringComparison.OrdinalIgnoreCase)));
 
     // =====================================================================
-    // Adaptive Graph reads
+    // Adaptive mailbox reads
     // =====================================================================
 
-    private sealed record ReadOutcome(Dictionary<string, JsonElement> Messages, List<string> UnavailableIds);
+    private sealed record ReadOutcome(Dictionary<string, ReadPart> Messages, List<string> UnavailableIds);
 
     private async Task<ReadOutcome> ReadAdaptiveAsync(IReadOnlyList<string> ids, ReadMode mode, TriageJob job, CancellationToken ct)
     {
-        var output = new ReadOutcome(new Dictionary<string, JsonElement>(StringComparer.Ordinal), []);
+        var output = new ReadOutcome(new Dictionary<string, ReadPart>(StringComparer.Ordinal), []);
         if (ids.Count == 0 || !job.IsRunning) return output;
 
         var queue = ids.Select(id => (Id: id, Attempt: 0)).ToList();
@@ -581,22 +626,22 @@ public sealed class TriageEngine
             var entries = queue.Take(window).ToList();
             queue.RemoveRange(0, window);
 
-            var parts = await _graph.ReadMessagesAsync(entries.Select(e => e.Id).ToList(), mode, ct);
+            var parts = await _mailbox.ReadMessagesAsync(entries.Select(e => e.Id).ToList(), mode, ct);
             var retry = new List<(string Id, int Attempt)>();
             var exhausted = new List<string>();
-            var retryAfterMs = AppConstants.GraphRetryDelayMs;
+            var retryAfterMs = 0;
             var adaptiveFailure = false;
 
             for (var i = 0; i < entries.Count; i++)
             {
                 var part = parts[i];
-                if (part.Ok) { output.Messages[entries[i].Id] = part.Body; continue; }
-                if (part.Status == 404) { output.UnavailableIds.Add(entries[i].Id); continue; }
-                if (part.AuthFailure) throw new InvalidOperationException("Microsoft Graph authorization failed while reading messages. Sign in again (jevoutlook auth) and try again.");
-                if (!part.Retryable) throw new InvalidOperationException(part.Error.Length > 0 ? part.Error : $"Microsoft Graph rejected a message read with HTTP {part.Status}.");
+                if (part.Ok) { output.Messages[entries[i].Id] = part; continue; }
+                if (part.NotFound) { output.UnavailableIds.Add(entries[i].Id); continue; }
+                if (part.AuthFailure) throw new InvalidOperationException($"{Provider} authorization failed while reading messages. Sign in again (jevoutlook account login) and try again.");
+                if (!part.Retryable) throw new InvalidOperationException(part.Error.Length > 0 ? part.Error : $"{Provider} rejected a message read.");
                 adaptiveFailure = true;
                 retryAfterMs = Math.Max(retryAfterMs, part.RetryAfterMs);
-                if (entries[i].Attempt < AppConstants.NetworkRetries) retry.Add((entries[i].Id, entries[i].Attempt + 1));
+                if (entries[i].Attempt < AppConstants.GraphReadRetries) retry.Add((entries[i].Id, entries[i].Attempt + 1));
                 else exhausted.Add(entries[i].Id);
             }
 
@@ -607,16 +652,18 @@ public sealed class TriageEngine
                 if (exhausted.Count > 0)
                 {
                     job.Status = JobStatus.Paused;
-                    job.StopReason = "graph-temporary";
-                    job.LastError = "Microsoft Graph is temporarily rate-limiting or unavailable. No new Outlook changes were made.";
+                    job.StopReason = "mailbox-temporary";
+                    job.LastError = $"{Provider} is temporarily rate-limiting or unavailable. No new {Provider} changes were made.";
                     _sink.Event("warn", job.LastError + " Processing is paused and can be continued safely after a short wait.");
                     break;
                 }
                 if (retry.Count > 0)
                 {
-                    _sink.Event("warn", $"Microsoft Graph temporarily limited {retry.Count} message read{(retry.Count == 1 ? string.Empty : "s")}. Retrying once with concurrency {job.GraphConcurrency}.");
-                    JobStore.Save(job);
-                    await Task.Delay(Math.Min(AppConstants.MaxGraphRetryDelayMs, retryAfterMs), ct);
+                    var attempt = retry.Max(r => r.Attempt);
+                    var delay = Math.Min(AppConstants.MaxGraphRetryDelayMs, Math.Max(retryAfterMs, AppConstants.GraphRetryDelayMs * (1 << attempt) * 2)); // 2 s, 4 s, 8 s or Retry-After
+                    _sink.Event("warn", $"{Provider} temporarily limited {retry.Count} message read{(retry.Count == 1 ? string.Empty : "s")}. Retrying in {delay / 1000.0:0.#} s with concurrency {job.GraphConcurrency} (attempt {attempt} of {AppConstants.GraphReadRetries}).");
+                    _store.Save(job);
+                    await Task.Delay(delay, ct);
                     queue.InsertRange(0, retry);
                 }
             }
@@ -634,7 +681,7 @@ public sealed class TriageEngine
 
     private WaveRequest CreateWaveRequest(PendingItem item, MessageMetadata? metadata, IReadOnlyList<LabelRule> rules, string stage, string body)
     {
-        if (metadata is null) throw new InvalidOperationException("Outlook metadata is unavailable for a pending message.");
+        if (metadata is null) throw new InvalidOperationException("Message metadata is unavailable for a pending message.");
         var payloadText = JevPayloadBuilder.Serialize(JevPayloadBuilder.Build(metadata, rules, stage, body, _model));
         return new WaveRequest
         {
@@ -684,7 +731,7 @@ public sealed class TriageEngine
             job.SpentUsd += reserve;
             job.ModelRequests += selected.Count;
             if (isRetry) job.ProviderRetries += selected.Count;
-            JobStore.Save(job);
+            _store.Save(job);
 
             var tasks = selected.Select(r => _jev.DecideAsync(r.PayloadText, r.EstimatedCost, rules, ct)).ToList();
             try
@@ -708,7 +755,7 @@ public sealed class TriageEngine
                         job.ModelRequests = Math.Max(0, job.ModelRequests - 1);
                     }
                 }
-                JobStore.Save(job);
+                _store.Save(job);
             }
             return selected;
         }
@@ -855,7 +902,7 @@ public sealed class TriageEngine
         job.Skipped += 1;
         RemovePending(job, id);
         var safe = metadata ?? MessageMetadata.Empty(id);
-        _sink.Event("warn", "A selected Outlook message is no longer available. It was skipped without applying categories or archive actions.");
+        _sink.Event("warn", $"A selected message is no longer available in {Provider}. It was skipped without applying {LabelNouns} or archive actions.");
         results.Add(new ResultRow(safe.From, safe.Subject, "Not assigned", string.Empty, "metadata", "skipped-message-unavailable"));
         job.Target = Math.Max(job.Target, job.HandledCount + job.Pending.Count);
     }
@@ -865,7 +912,7 @@ public sealed class TriageEngine
         if (job.SkippedMessageIds.Contains(id)) return;
         if (job.SkippedMessageIds.Count >= AppConstants.MaxSkippedMessageIds)
         {
-            throw new InvalidOperationException("Too many messages were skipped safely in this session. Start a new session with a narrower Outlook scope.");
+            throw new InvalidOperationException("Too many messages were skipped safely in this session. Start a new session with a narrower scope.");
         }
         job.SkippedMessageIds.Add(id);
     }
@@ -873,31 +920,29 @@ public sealed class TriageEngine
     private static void RemovePending(TriageJob job, string id) => job.Pending.RemoveAll(p => p.Id == id);
 
     // =====================================================================
-    // Outlook writes
+    // Mailbox writes
     // =====================================================================
 
     /// <summary>
     /// Categories first (for every message), then archive moves. Both are idempotent:
-    /// re-adding a category is a no-op and a message already moved answers 404.
+    /// re-adding a category is a no-op and a message already moved answers 404. Only the
+    /// selected category is added; existing categories are preserved.
     /// </summary>
-    private async Task<WriteOutcome> ApplyFinalResultsAsync(List<FinalResult> finalized, Dictionary<string, MessageMetadata> metadataById,
+    private async Task<WriteOutcome> ApplyFinalResultsAsync(TriageJob job, List<FinalResult> finalized, Dictionary<string, MessageMetadata> metadataById,
         Dictionary<string, string> categoryNames, CancellationToken ct)
     {
         // Re-read the current category lists right before writing: the snapshot taken at the start of
-        // the batch may be minutes old and a PATCH replaces the whole collection.
+        // the batch may be minutes old and a PATCH replaces the whole collection. Same adaptive,
+        // Retry-After-aware loop as the metadata read, so a throttled mailbox is waited for, not abandoned.
         var ids = finalized.Select(f => f.Item.Id).ToList();
-        var fresh = await _graph.ReadMessagesAsync(ids, ReadMode.Categories, ct);
-        var currentCategories = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        var gone = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = 0; i < ids.Count; i++)
+        var fresh = await ReadAdaptiveAsync(ids, ReadMode.Labels, job, ct);
+        if (!job.IsRunning)
         {
-            var part = fresh[i];
-            if (part.Ok) { currentCategories[ids[i]] = MessageMetadata.ReadCategories(part.Body); continue; }
-            if (part.Status == 404) { gone.Add(ids[i]); continue; } // moved/deleted meanwhile: nothing left to write
-            if (part.AuthFailure) return new WriteOutcome(false, false, "Microsoft Graph authorization failed before writing categories. Sign in again (jevoutlook auth).");
-            if (!part.Retryable) return new WriteOutcome(false, false, $"Microsoft Graph rejected a category read with HTTP {part.Status}. {part.Error}".Trim());
-            return new WriteOutcome(false, true, "Microsoft Graph is temporarily rate-limiting or unavailable while re-reading categories.");
+            return new WriteOutcome(false, true, job.LastError.Length > 0 ? job.LastError : $"{Provider} is temporarily rate-limiting or unavailable while re-reading {LabelNouns}.");
         }
+        var currentCategories = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var gone = new HashSet<string>(fresh.UnavailableIds, StringComparer.Ordinal); // moved/deleted meanwhile: nothing left to write
+        foreach (var (id, part) in fresh.Messages) currentCategories[id] = part.Labels;
 
         var updates = new List<(string, IReadOnlyList<string>)>();
         foreach (var final in finalized)
@@ -906,20 +951,16 @@ public sealed class TriageEngine
             var existing = currentCategories.TryGetValue(final.Item.Id, out var current) ? current
                 : metadataById.TryGetValue(final.Item.Id, out var metadata) ? metadata.Categories : [];
             var categoryName = categoryNames.GetValueOrDefault(final.Rule.Name.ToLowerInvariant(), final.Rule.Name);
-            var markerName = categoryNames.GetValueOrDefault(AppConstants.TechnicalTriagedCategory.ToLowerInvariant(), AppConstants.TechnicalTriagedCategory);
             var merged = new List<string>(existing);
-            foreach (var wanted in new[] { categoryName, markerName })
-            {
-                if (!merged.Any(c => string.Equals(c, wanted, StringComparison.OrdinalIgnoreCase))) merged.Add(wanted);
-            }
+            if (!merged.Any(c => string.Equals(c, categoryName, StringComparison.OrdinalIgnoreCase))) merged.Add(categoryName);
             updates.Add((final.Item.Id, merged));
         }
 
-        var outcome = await _graph.PatchCategoriesAsync(updates, ct);
+        var outcome = await _mailbox.ApplyLabelsAsync(updates, ct);
         if (!outcome.Ok) return outcome;
 
         var archiveIds = finalized.Where(f => f.Archive && !gone.Contains(f.Item.Id)).Select(f => f.Item.Id).ToList();
-        return archiveIds.Count > 0 ? await _graph.MoveToArchiveAsync(archiveIds, ct) : WriteOutcome.Success;
+        return archiveIds.Count > 0 ? await _mailbox.ArchiveAsync(archiveIds, ct) : WriteOutcome.Success;
     }
 
     private static string Clip(string? value, string fallback, int max = 160)

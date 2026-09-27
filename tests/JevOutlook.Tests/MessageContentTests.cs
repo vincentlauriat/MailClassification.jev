@@ -1,6 +1,7 @@
 using System.Text.Json;
 using JevOutlook;
 using JevOutlook.Graph;
+using JevOutlook.Mail;
 
 namespace JevOutlook.Tests;
 

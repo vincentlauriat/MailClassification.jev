@@ -1,21 +1,44 @@
+using JevOutlook.Rules;
 using JevOutlook.Triage;
 
 namespace JevOutlook.Storage;
 
-/// <summary>Checkpointed processing session (one at a time per user).</summary>
-public static class JobStore
+/// <summary>Checkpointed processing session of one account (one session at a time per mailbox).</summary>
+public sealed class JobStore
 {
-    public static TriageJob? Load() => JsonStore.Load<TriageJob>(AppPaths.Job);
+    private readonly string _jobPath;
+    private readonly string _rulesPath;
 
-    public static void Save(TriageJob job)
+    public JobStore(string accountId)
     {
-        job.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        JsonStore.Save(AppPaths.Job, job);
+        AccountId = accountId;
+        _jobPath = AppPaths.AccountJob(accountId);
+        _rulesPath = AppPaths.AccountJobRules(accountId);
     }
 
-    public static void Delete()
+    public string AccountId { get; }
+
+    public TriageJob? Load() => JsonStore.Load<TriageJob>(_jobPath);
+
+    public void Save(TriageJob job)
     {
-        JsonStore.Delete(AppPaths.Job);
-        RuleStore.DeleteJobRules();
+        job.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        JsonStore.Save(_jobPath, job);
+    }
+
+    public void Delete()
+    {
+        JsonStore.Delete(_jobPath);
+        JsonStore.Delete(_rulesPath);
+    }
+
+    /// <summary>Rules frozen for the current job so later edits cannot change a running classification.</summary>
+    public void SaveRules(IEnumerable<LabelRule> rules) => JsonStore.Save(_rulesPath, rules.ToList());
+
+    public List<LabelRule> LoadRules()
+    {
+        var rules = JsonStore.Load<List<LabelRule>>(_rulesPath)
+            ?? throw new InvalidOperationException("The rules of the current processing session are missing. Clear the session and start again.");
+        return RuleValidator.ValidateAndNormalize(rules);
     }
 }
