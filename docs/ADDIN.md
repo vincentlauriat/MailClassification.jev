@@ -1,20 +1,20 @@
-# The jevOutlook Outlook add-in
+# The MailClassification Outlook add-in
 
 **Classify the message you are reading, from inside Outlook, with Jev: one click to see the
 category and its confidence, a second click to apply it. The add-in is a thin pane over the
-jevOutlook server that runs on your own computer.**
+MailClassification server that runs on your own computer.**
 
-This guide is for someone who has never used jevOutlook and wants to install the add-in and
+This guide is for someone who has never used MailClassification and wants to install the add-in and
 use it. It covers the whole path: what the add-in does, how it works, what you need,
 installation, daily use, updates, removal, security and troubleshooting. The main
-[README](../README.md) covers the rest of jevOutlook: the dashboard, the command line, and
+[README](../README.md) covers the rest of MailClassification: the dashboard, the command line, and
 Gmail and IMAP mailboxes.
 
 A shorter visual version of this guide is on the project site:
 <https://vincentlauriat.github.io/MailClassification.jev/addin/>.
 
 <p align="center">
-  <img src="screenshots/addin-pane-result.png" alt="The jevOutlook task pane after Classify with Jev: the label action with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card in preview mode" width="360">
+  <img src="screenshots/addin-pane-result.png" alt="The MailClassification task pane after Classify with Jev: the label action with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card in preview mode" width="360">
   <br><sub>The real pane, served by the local server and opened in a browser. The account name, subject and sender are masked.</sub>
 </p>
 
@@ -43,7 +43,7 @@ A shorter visual version of this guide is on the project site:
 
 ## 1. What the add-in does
 
-When you read a message, Outlook shows a **jevOutlook** group on the ribbon. The group has one button,
+When you read a message, Outlook shows a **MailClassification** group on the ribbon. The group has one button,
 **Classify**. It opens a task pane next to the message. The pane has two cards and a footer.
 
 ### "This message"
@@ -107,33 +107,33 @@ Some values are fixed in the pane. To change them, use the full dashboard or the
 - A link to the **full dashboard**, <http://127.0.0.1:5177/>, which opens in your browser.
 - The name of the model in use, normally `~typesafe/jev-latest`.
 - At the top of the pane, the header shows the signed-in mailbox. It adds `· no API key`
-  when jevOutlook has no OpenRouter key.
+  when MailClassification has no OpenRouter key.
 
 ## 2. How it works
 
 ```mermaid
 flowchart LR
     O["Outlook<br/>message read"] -->|"Classify button"| P["Task pane<br/>https://localhost:5178/taskpane.html"]
-    P -->|"POST /api/* same origin"| S["jevoutlook ui<br/>on your computer"]
+    P -->|"POST /api/* same origin"| S["mailclassification ui<br/>on your computer"]
     S -->|"Microsoft Graph"| G[("Your Microsoft 365 mailbox")]
     S -->|"OpenRouter"| J["Jev by TypeSafe"]
 ```
 
 - **The pane is not hosted in the cloud.** Outlook loads it from your own computer, at
-  `https://localhost:5178/taskpane.html`. The page is served by the `jevoutlook ui` process,
+  `https://localhost:5178/taskpane.html`. The page is served by the `mailclassification ui` process,
   the same process that serves the dashboard on `http://127.0.0.1:5177/`. If that process is
   not running, Outlook has nothing to load.
 - **HTTPS with the ASP.NET Core development certificate.** Outlook only loads add-in pages
-  over HTTPS. `jevoutlook ui` listens on port 5178 with the .NET development certificate, which
+  over HTTPS. `mailclassification ui` listens on port 5178 with the .NET development certificate, which
   you trust once with `dotnet dev-certs https --trust`.
 - **The pane calls a local API.** Every action is a `POST /api/<function>` with a JSON body,
   sent to the same origin the pane came from. The pane uses four functions:
   `classifyItem`, `applyItem`, `getUiState` and `authStatus`. The Inbox run uses the same
   job functions as the dashboard.
-- **The add-in has no sign-in of its own.** It reuses what jevOutlook already has: the
-  Microsoft 365 sign-in you made with `jevoutlook account add … --m365`, and the stored
+- **The add-in has no sign-in of its own.** It reuses what MailClassification already has: the
+  Microsoft 365 sign-in you made with `mailclassification account add … --m365`, and the stored
   OpenRouter key. The pane does not name a mailbox, so the server uses the **first
-  Microsoft 365 mailbox that has a sign-in record**, in the order of `jevoutlook account list`.
+  Microsoft 365 mailbox that has a sign-in record**, in the order of `mailclassification account list`.
 - **Finding the message.** Outlook gives the pane an item id. The pane converts it with
   `Office.context.mailbox.convertToRestId` (REST v2.0 format). The server then reads the
   message through Microsoft Graph, with the same two-stage policy as a run: headers and preview
@@ -147,8 +147,8 @@ flowchart LR
 | You need | Why, and where to get it |
 | --- | --- |
 | A **Microsoft 365** (work or school) or **Outlook.com** mailbox | The add-in reads and writes through Microsoft Graph. **Gmail and IMAP mailboxes are not supported by the add-in**; use the dashboard or the CLI for them. |
-| The **.NET 10 SDK** | To build jevOutlook and to create the development certificate. <https://dotnet.microsoft.com/download>. macOS, Windows or Linux. |
-| An **Entra ID app registration** | The one-time Microsoft registration that lets jevOutlook act on your mailbox. About 10 minutes: README [§6.2](../README.md#62-microsoft-365--outlookcom-mailboxes). |
+| The **.NET 10 SDK** | To build MailClassification and to create the development certificate. <https://dotnet.microsoft.com/download>. macOS, Windows or Linux. |
+| An **Entra ID app registration** | The one-time Microsoft registration that lets MailClassification act on your mailbox. About 10 minutes: README [§6.2](../README.md#62-microsoft-365--outlookcom-mailboxes). |
 | An **OpenRouter key** | Jev is reached through OpenRouter, which bills per request, about one cent per hundred messages: README [§6.1](../README.md#61-the-model-an-openrouter-key). |
 | A **trusted development certificate** | `dotnet dev-certs https --trust`, step 4 below. |
 | An organisation that **allows custom add-ins** | Many companies disable them. If yours does, the sideload fails and only a tenant administrator can change that. Personal Outlook.com accounts are not affected by tenant policies. |
@@ -175,34 +175,34 @@ does not load.
 ## 4. Installation, step by step
 
 The commands below use macOS or Linux syntax. On Windows, in PowerShell, write
-`$HOME\.jevoutlook\bin` instead of `~/.jevoutlook/bin`, and the executable is
-`jevoutlook.exe`.
+`$HOME\.mailclassification\bin` instead of `~/.mailclassification/bin`, and the executable is
+`mailclassification.exe`.
 
 ### Step 1 — Get the code, build and publish
 
 ```bash
 git clone https://github.com/vincentlauriat/MailClassification.jev.git
 cd MailClassification.jev
-dotnet publish src/JevOutlook -c Release -o ~/.jevoutlook/bin
+dotnet publish src/MailClassification -c Release -o ~/.mailclassification/bin
 ```
 
-This produces a stable copy of the executable in `~/.jevoutlook/bin`. It is the copy the
+This produces a stable copy of the executable in `~/.mailclassification/bin`. It is the copy the
 background service will run, so a later `dotnet build` or `dotnet clean` in the repository
 cannot pull it from under the service. Put that directory on your `PATH`, or type the full
-path `~/.jevoutlook/bin/jevoutlook` in the commands below. Check that it runs:
+path `~/.mailclassification/bin/mailclassification` in the commands below. Check that it runs:
 
 ```bash
-jevoutlook version
+mailclassification version
 ```
 
 ### Step 2 — Store the OpenRouter key
 
 ```bash
-jevoutlook key set sk-or-...
-jevoutlook key test        # → "OK — model ~typesafe/jev-latest"
+mailclassification key set sk-or-...
+mailclassification key test        # → "OK — model ~typesafe/jev-latest"
 ```
 
-The key is stored in `~/.jevoutlook/config.json` (mode 0600). **Store it, even if you
+The key is stored in `~/.mailclassification/config.json` (mode 0600). **Store it, even if you
 already export `OPENROUTER_API_KEY` in your shell.** The background service of step 5 does not
 inherit your shell's variables, so without a stored key the pane shows `· no API key`.
 How to create a key: README [§6.1](../README.md#61-the-model-an-openrouter-key).
@@ -213,12 +213,12 @@ Create the Entra app registration once, following README
 [§6.2](../README.md#62-microsoft-365--outlookcom-mailboxes). Then:
 
 ```bash
-jevoutlook config set client-id <application-client-id>
-jevoutlook account add alice@contoso.com --m365
+mailclassification config set client-id <application-client-id>
+mailclassification account add alice@contoso.com --m365
 ```
 
 Open the link that is printed, type the code, and sign in with the mailbox's account. When it
-works, jevOutlook prints `Signed in as …`. For a personal Outlook.com account, add
+works, MailClassification prints `Signed in as …`. For a personal Outlook.com account, add
 `--tenant consumers`. If the sign-in page says *"Need admin approval"*, see the options in
 README §6.2.
 
@@ -235,34 +235,34 @@ distribution.
 
 ### Step 5 — Keep the server running
 
-The pane only loads while `jevoutlook ui` runs.
+The pane only loads while `mailclassification ui` runs.
 
 **macOS: install the background service** (a per-user LaunchAgent, which starts at login and
 restarts if the server stops):
 
 ```bash
-jevoutlook service install --exe ~/.jevoutlook/bin/jevoutlook
-jevoutlook service status
+mailclassification service install --exe ~/.mailclassification/bin/mailclassification
+mailclassification service status
 ```
 
 `service status` should show a `Health` line like this one (the version number will vary):
 
 ```
-Health  : jevOutlook 0.1.0 answers on http://127.0.0.1:5177/
+Health  : MailClassification 0.1.0 answers on http://127.0.0.1:5177/
 ```
 
-The service writes its output to `~/.jevoutlook/logs/ui.log`. If `service install` warns that
+The service writes its output to `~/.mailclassification/logs/ui.log`. If `service install` warns that
 `DOTNET_ROOT is not set`, export `DOTNET_ROOT` to your .NET install directory and run the
 install again. README [§6.5](../README.md#65-keep-the-dashboard-running-macos) has the
 details.
 
 **Windows and Linux: there is no `service` command yet.** On those systems,
-`jevoutlook service` answers: *"'jevoutlook service' manages a macOS LaunchAgent. On other
-systems, run 'jevoutlook ui --no-open' from your own service manager."* Start the server
+`mailclassification service` answers: *"'mailclassification service' manages a macOS LaunchAgent. On other
+systems, run 'mailclassification ui --no-open' from your own service manager."* Start the server
 yourself and keep it running:
 
 ```bash
-jevoutlook ui --no-open
+mailclassification ui --no-open
 ```
 
 To have it start by itself, register that command with your system's own tools: for
@@ -293,10 +293,10 @@ to get it.
 - **Write it with the CLI:**
 
   ```bash
-  jevoutlook addin manifest --out ~/jevoutlook-manifest.xml
+  mailclassification addin manifest --out ~/mailclassification-manifest.xml
   ```
 
-  Without `--out`, the file is written to `release/jevoutlook-manifest.xml` **under the current
+  Without `--out`, the file is written to `release/mailclassification-manifest.xml` **under the current
   directory**. If you changed the HTTPS port, pass it: `--https-port <port>`.
 
 ### Step 8 — Sideload the add-in in Outlook
@@ -324,7 +324,7 @@ likely disabled for your organisation. See [§9](#9-troubleshooting).
 
 1. Open a message in Outlook, in the reading pane or in its own window.
 2. On the ribbon, or in the **…** / **Apps** menu depending on the client, find the
-   **jevOutlook** group and choose **Classify**.
+   **MailClassification** group and choose **Classify**.
 3. In the pane, click **Classify with Jev**.
 
 ## 5. Using the add-in
@@ -382,7 +382,7 @@ the next **Start** begins a new one. Nothing is lost: every decision is checkpoi
 **Closing the pane mid-run** leaves the session active on the server. Re-opening the pane
 shows its progress line, but the pane does not resume it; a new **Start** then answers *"A
 processing session is already active. Stop or continue it before starting another."* Resume or
-stop it from the full dashboard (footer link), or finish it with `jevoutlook continue`.
+stop it from the full dashboard (footer link), or finish it with `mailclassification continue`.
 
 ### 5.3 Costs
 
@@ -395,28 +395,46 @@ are estimated and reported: README [§11](../README.md#11-what-it-costs).
 ```bash
 cd MailClassification.jev
 git pull
-dotnet publish src/JevOutlook -c Release -o ~/.jevoutlook/bin
-jevoutlook service restart          # macOS; elsewhere, stop and start 'jevoutlook ui --no-open'
+dotnet publish src/MailClassification -c Release -o ~/.mailclassification/bin
+mailclassification service restart          # macOS; elsewhere, stop and start 'mailclassification ui --no-open'
 ```
 
 The pane is served by the server, so Outlook picks up the new pane the next time it opens it.
 You do **not** need to sideload again unless the **manifest itself** changes. That happens
 when you change the HTTPS port, or when a new version changes the add-in's manifest, for
-example its version number (`1.0.0.0` today). To compare, download
+example its version number (`1.1.0.0` today). To compare, download
 <https://localhost:5178/manifest.xml> and diff it with the file you installed.
+
+### Upgrading from jevOutlook
+
+The add-in was called **jevOutlook** until 2026-09-28; its manifest version went from
+`1.0.0.0` to `1.1.0.0` with the new name. The first `mailclassification` command moves your
+state from `~/.jevoutlook` to `~/.mailclassification` on its own. Then, once:
+
+```bash
+dotnet publish src/MailClassification -c Release -o ~/.mailclassification/bin
+~/.mailclassification/bin/mailclassification service install --exe ~/.mailclassification/bin/mailclassification
+mailclassification addin manifest            # writes release/mailclassification-manifest.xml
+```
+
+`service install` removes the old `com.vincentlauriat.jevoutlook` agent. Sideload the new
+manifest (**Add from file**, as in [§4](#4-installation-step-by-step)) so Outlook shows the
+new name. The add-in id did not change, so Outlook treats it as the same add-in. The full
+upgrade notes are in the README,
+[Upgrading from jevOutlook](../README.md#upgrading-from-jevoutlook).
 
 ## 7. Uninstalling
 
 1. **In Outlook**, open the same **My add-ins** dialog as in step 8. Under **Custom add-ins**,
-   open the **…** menu of jevOutlook and choose **Remove**. The exact wording can vary by
+   open the **…** menu of MailClassification and choose **Remove**. The exact wording can vary by
    client; Microsoft's sideload guide linked above describes it.
 2. **Stop the server.**
-   - macOS: `jevoutlook service uninstall`. It stops the LaunchAgent and deletes its plist.
-   - Windows and Linux: remove the task or service you created, and stop `jevoutlook ui`.
+   - macOS: `mailclassification service uninstall`. It stops the LaunchAgent and deletes its plist.
+   - Windows and Linux: remove the task or service you created, and stop `mailclassification ui`.
 3. **Optional: remove the development certificate** with `dotnet dev-certs https --clean`.
    Other .NET projects on the computer may use it.
-4. **Optional: remove jevOutlook's data.** Delete `~/.jevoutlook`, and with it your settings,
-   rules, mailboxes and stored key. Run `jevoutlook account remove <id>` first, so the stored
+4. **Optional: remove MailClassification's data.** Delete `~/.mailclassification`, and with it your settings,
+   rules, mailboxes and stored key. Run `mailclassification account remove <id>` first, so the stored
    passwords and sign-ins are removed from the Keychain as well. See README
    [§13](../README.md#13-files-state-and-secrets).
 
@@ -442,8 +460,8 @@ example its version number (`1.0.0.0` today). To compare, download
   text nodes, never as HTML, so a crafted email cannot inject markup or script into the pane.
   The model prompt tells Jev never to follow instructions found in an email.
 - **No secret in the service.** The LaunchAgent plist is plain text, so API keys are never
-  copied into it. Only `DOTNET_ROOT` and `JEVOUTLOOK_HOME` are carried over. The key lives in
-  `~/.jevoutlook/config.json` (mode 0600), and Microsoft tokens live in the OS credential cache.
+  copied into it. Only `DOTNET_ROOT` and `MAILCLASSIFICATION_HOME` are carried over. The key lives in
+  `~/.mailclassification/config.json` (mode 0600), and Microsoft tokens live in the OS credential cache.
 - **One external script.** The pane loads Microsoft's `office.js` from
   `appsforoffice.microsoft.com`, as every Office add-in does. Nothing else leaves your computer,
   apart from the Graph and OpenRouter calls made by the server.
@@ -452,17 +470,17 @@ example its version number (`1.0.0.0` today). To compare, download
 
 | Symptom | Cause and fix |
 | --- | --- |
-| **The pane is blank, or Outlook says it can't reach the add-in** | The server is not running, so Outlook has nothing to load. macOS: `jevoutlook service status`, then `jevoutlook service restart`, or `service install` if the agent is not installed. Read `~/.jevoutlook/logs/ui.log`. Windows/Linux: start `jevoutlook ui --no-open`. |
-| **Certificate warning at https://localhost:5178, or a blank pane although the server runs** | The development certificate is missing or not trusted. Run `dotnet dev-certs https --trust`, then restart the server (`jevoutlook service restart`). Restart Outlook, or the browser, as well. |
+| **The pane is blank, or Outlook says it can't reach the add-in** | The server is not running, so Outlook has nothing to load. macOS: `mailclassification service status`, then `mailclassification service restart`, or `service install` if the agent is not installed. Read `~/.mailclassification/logs/ui.log`. Windows/Linux: start `mailclassification ui --no-open`. |
+| **Certificate warning at https://localhost:5178, or a blank pane although the server runs** | The development certificate is missing or not trusted. Run `dotnet dev-certs https --trust`, then restart the server (`mailclassification service restart`). Restart Outlook, or the browser, as well. |
 | **The server log says "HTTPS could not be started … Continuing with HTTP only (dashboard works, add-in pane will not load)"** | No development certificate was found. The dashboard works on port 5177, but nothing listens on 5178, so the pane cannot load and `/manifest.xml` is unavailable. Run `dotnet dev-certs https --trust`, then restart. |
-| **The pane header says "Local server unreachable: …"** | The pane loaded, but its first API call failed. **Read the text after the colon.** A network error means the server stopped after the pane was loaded: `jevoutlook service status` / `service restart`. A message such as *"Unknown account …"* or *"Several mailboxes are configured …"* means the server runs but no Microsoft 365 mailbox is usable: check `jevoutlook account list`. |
-| **"Not signed in — use the dashboard"** | The Microsoft sign-in is missing or expired. `jevoutlook account login <id>`, or sign in again from the dashboard's Mailboxes card. |
-| **"· no API key" in the header, or "Enter an API key for … (jevoutlook key set <key>)" on Classify** | The server has no OpenRouter key. `jevoutlook key set <key>`, then `jevoutlook key test`. The LaunchAgent does not see a key that is only exported in your shell. |
+| **The pane header says "Local server unreachable: …"** | The pane loaded, but its first API call failed. **Read the text after the colon.** A network error means the server stopped after the pane was loaded: `mailclassification service status` / `service restart`. A message such as *"Unknown account …"* or *"Several mailboxes are configured …"* means the server runs but no Microsoft 365 mailbox is usable: check `mailclassification account list`. |
+| **"Not signed in — use the dashboard"** | The Microsoft sign-in is missing or expired. `mailclassification account login <id>`, or sign in again from the dashboard's Mailboxes card. |
+| **"· no API key" in the header, or "Enter an API key for … (mailclassification key set <key>)" on Classify** | The server has no OpenRouter key. `mailclassification key set <key>`, then `mailclassification key test`. The LaunchAgent does not see a key that is only exported in your shell. |
 | **"This message could not be found in the mailbox"** | The message was moved or deleted, or it belongs to a different mailbox than the one the server uses, which is the first signed-in Microsoft 365 mailbox. Shared and delegated mailboxes are not supported. |
-| **"A processing session is already active…" on Start** | A previous run was interrupted by closing the pane ([§5.2](#52-an-inbox-run)). Resume or stop it in the full dashboard, or run `jevoutlook continue`. |
-| **"Add-in installation failed" at sideload, or no custom add-ins option** | A tenant policy that disables custom add-ins. jevOutlook cannot bypass it; only a tenant administrator can change it. A personal Outlook.com account is not subject to it. |
-| **"Port 5177 answers but not as a current jevOutlook …"** | Another program, or an old jevOutlook build, holds the port. Stop it, or choose other ports: `jevoutlook ui --port <p> --https-port <q>`, or on macOS `service install --port <p> --https-port <q> --exe …`. Then regenerate the manifest with `addin manifest --https-port <q>` and sideload it again. |
-| **The ribbon shows no jevOutlook group** | The add-in is not installed for this mailbox, or the client hides add-in buttons under **…** / **Apps**. Check **My add-ins**. The add-in only appears when **reading** a message, not when composing one. |
+| **"A processing session is already active…" on Start** | A previous run was interrupted by closing the pane ([§5.2](#52-an-inbox-run)). Resume or stop it in the full dashboard, or run `mailclassification continue`. |
+| **"Add-in installation failed" at sideload, or no custom add-ins option** | A tenant policy that disables custom add-ins. MailClassification cannot bypass it; only a tenant administrator can change it. A personal Outlook.com account is not subject to it. |
+| **"Port 5177 answers but not as a current MailClassification …"** | Another program, or an old MailClassification build, holds the port. Stop it, or choose other ports: `mailclassification ui --port <p> --https-port <q>`, or on macOS `service install --port <p> --https-port <q> --exe …`. Then regenerate the manifest with `addin manifest --https-port <q>` and sideload it again. |
+| **The ribbon shows no MailClassification group** | The add-in is not installed for this mailbox, or the client hides add-in buttons under **…** / **Apps**. Check **My add-ins**. The add-in only appears when **reading** a message, not when composing one. |
 
 More: README [§14](../README.md#14-troubleshooting).
 
@@ -470,22 +488,22 @@ More: README [§14](../README.md#14-troubleshooting).
 
 | Command | What it does |
 | --- | --- |
-| `jevoutlook ui [--port 5177] [--https-port 5178] [--no-https] [--no-open]` | Starts the dashboard (HTTP) and the add-in pane (HTTPS). If a jevOutlook server already runs, it says *already running* and exits. |
-| `jevoutlook addin manifest [--https-port 5178] [--out <file.xml>]` | Writes the manifest. The default path is `release/jevoutlook-manifest.xml` under the current directory. |
-| `jevoutlook service install [--port 5177] [--https-port 5178] [--exe <path>]` | macOS only: installs the LaunchAgent that runs `ui --no-open` from login. |
-| `jevoutlook service status [--port 5177]` | macOS only: plist, agent state, `/health` probe, log path. Exit code 1 when the server does not answer. |
-| `jevoutlook service restart` / `service uninstall` | macOS only: restarts the agent, or stops and removes it. |
+| `mailclassification ui [--port 5177] [--https-port 5178] [--no-https] [--no-open]` | Starts the dashboard (HTTP) and the add-in pane (HTTPS). If a MailClassification server already runs, it says *already running* and exits. |
+| `mailclassification addin manifest [--https-port 5178] [--out <file.xml>]` | Writes the manifest. The default path is `release/mailclassification-manifest.xml` under the current directory. |
+| `mailclassification service install [--port 5177] [--https-port 5178] [--exe <path>]` | macOS only: installs the LaunchAgent that runs `ui --no-open` from login. |
+| `mailclassification service status [--port 5177]` | macOS only: plist, agent state, `/health` probe, log path. Exit code 1 when the server does not answer. |
+| `mailclassification service restart` / `service uninstall` | macOS only: restarts the agent, or stops and removes it. |
 
 | URL | What it is |
 | --- | --- |
 | `https://localhost:5178/taskpane.html` | The pane Outlook loads. |
 | `https://localhost:5178/manifest.xml` | The manifest for the running HTTPS port. It answers 503 when HTTPS is off. |
 | `http://127.0.0.1:5177/` | The full dashboard. |
-| `http://127.0.0.1:5177/health` | `{"app":"jevoutlook","version":…,"https":…}`, used by `service status` and by `ui` to detect a running server. |
+| `http://127.0.0.1:5177/health` | `{"app":"mailclassification","version":…,"https":…}`, used by `service status` and by `ui` to detect a running server. |
 
-The manifest declares the add-in id `7c1f3f0e-6d2a-4b5e-9c1a-2f0e8a5d4b31`, version `1.0.0.0`,
+The manifest declares the add-in id `7c1f3f0e-6d2a-4b5e-9c1a-2f0e8a5d4b31`, version `1.1.0.0`,
 a read-mode task pane (`ItemRead`, messages only), and a **Classify** button in a
-**jevOutlook** group on the message-read ribbon.
+**MailClassification** group on the message-read ribbon.
 
 ## 11. Status and limitations
 

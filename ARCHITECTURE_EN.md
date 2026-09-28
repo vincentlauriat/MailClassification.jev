@@ -1,4 +1,4 @@
-# jevOutlook — Architecture (source of truth)
+# MailClassification — Architecture (source of truth)
 
 > French mirror: `ARCHITECTURE.md`. Keep both in sync.
 
@@ -12,6 +12,19 @@ label or IMAP keyword), optionally archive high-confidence disposable mail, unde
 strict run budget and with resumable, checkpointed processing. No hosted backend, no
 Azure work beyond one shared app registration for the Microsoft mailboxes.
 
+One local process, three ways in, all sharing the same state (`~/.mailclassification`):
+
+| Surface | Served by | Use |
+| --- | --- | --- |
+| **Dashboard** | `ui` (ASP.NET Core on 127.0.0.1:5177) | setup, preview runs, batches on every mailbox |
+| **CLI** | the same executable (`mailclassification run`, `continue`…) | scripting, `--all-accounts` |
+| **Outlook add-in** | the same `ui` process over HTTPS (localhost:5178), kept up by the LaunchAgent (§10) | classify / apply on the open message, a preview-first Inbox run, inside Outlook (Microsoft 365 / Outlook.com) |
+
+The add-in pane, its API and its manifest are built and tested; sideloading into a real Outlook
+client is not yet validated end to end (see the Outlook add-in row in §3 and [docs/ADDIN.md](docs/ADDIN.md)).
+
+The product was called **jevOutlook** until 2026-09-28; the rename and its migration are in §7.
+
 ## 2. Stack
 
 | Concern | Choice | Why |
@@ -20,9 +33,9 @@ Azure work beyond one shared app registration for the Microsoft mailboxes.
 | Microsoft mailboxes | Microsoft Graph v1.0 REST via `HttpClient` | Full control of `$batch`, `Prefer` headers and OData filters; no SDK version drift. Exchange Online has no password IMAP, so Graph + Microsoft sign-in is the only path |
 | Microsoft sign-in | `Azure.Identity` (`DeviceCodeCredential`, `InteractiveBrowserCredential`) | Delegated permissions, persisted MSAL token cache, one `AuthenticationRecord` per account; one Entra app registration shared by every Microsoft mailbox |
 | Gmail / IMAP mailboxes | MailKit (`ImapClient`) | Mature IMAP client with Gmail extensions (`X-GM-LABELS`), keywords, special-use folders |
-| Passwords | macOS Keychain through `/usr/bin/security` (service `jevoutlook`, account = account id); `secrets.json` 0600 elsewhere | Nothing secret next to the configuration; no extra dependency |
+| Passwords | macOS Keychain through `/usr/bin/security` (service `mailclassification`, account = account id); `secrets.json` 0600 elsewhere | Nothing secret next to the configuration; no extra dependency |
 | Model | Jev `~typesafe/jev-latest` via OpenRouter Decisions (`/api/alpha/decisions`); optional direct TypeSafe (`/v1/systemone`) | Same request/response contract; OpenRouter adds `usage.cost` |
-| State | JSON files in `~/.jevoutlook/` (0600), per-account subdirectories | Counterpart of Apps Script User Properties |
+| State | JSON files in `~/.mailclassification/` (0600), per-account subdirectories | Counterpart of Apps Script User Properties |
 | Tests | xUnit | Pure logic: rules, payload, contract parsing, body compaction, filters, cursor paging, IMAP helpers |
 
 ## 3. Component map
@@ -51,7 +64,7 @@ Web/UiServer  ──┼─► Triage/TriageEngine ─► Mail/IMailbox ┤
 | `Jev/JevClient` | Sends one Decisions request; strict contract validation; cost accounting source |
 | `Triage/TriageEngine` | Session lifecycle, batches, two waves, adaptive concurrency, budget, circuit breaker, grouped writes — provider-agnostic |
 | `Cli/*` | `account` commands, `--account` / `--all-accounts`, run/continue/status, terminal rendering, hidden password prompt; `ServiceCommand` (`service install/status/restart/uninstall`, macOS LaunchAgent, see §10) |
-| `Web/UiServer` | Local dashboard (ASP.NET Core minimal API on 127.0.0.1): serves the embedded page and exposes jevMail's server functions as `POST /api/{function}` (args as JSON array) plus `addAccount` / `removeAccount` / `testAccount`; one engine and one device-code sign-in state per account. Engines live in a `ConcurrentDictionary`; a replaced or evicted engine's mailbox is disposed, and one-shot mailboxes (add-account probe, `testAccount`, `authStatus`, `classifyItem`, `applyItem`) are `await using`, so no IMAP connection leaks (Gmail caps simultaneous IMAP connections at 15). Job calls (`startTriageJob`, `processNextBatch`, `resumeTriageJob`, `cancelTriageJob`, `clearFinishedJob`) run under the in-process `_jobLock` and try-acquire the account's `job.lock`; `signOut` runs under `_jobLock` because it may dispose an IMAP mailbox. `GET /health` → `{app, version, https}` identifies a running jevOutlook (single instance, `service status`); `AllowedOrigins(port, httpsPort)` is the one place that builds the Host/Origin allowlists |
+| `Web/UiServer` | Local dashboard (ASP.NET Core minimal API on 127.0.0.1): serves the embedded page and exposes jevMail's server functions as `POST /api/{function}` (args as JSON array) plus `addAccount` / `removeAccount` / `testAccount`; one engine and one device-code sign-in state per account. Engines live in a `ConcurrentDictionary`; a replaced or evicted engine's mailbox is disposed, and one-shot mailboxes (add-account probe, `testAccount`, `authStatus`, `classifyItem`, `applyItem`) are `await using`, so no IMAP connection leaks (Gmail caps simultaneous IMAP connections at 15). Job calls (`startTriageJob`, `processNextBatch`, `resumeTriageJob`, `cancelTriageJob`, `clearFinishedJob`) run under the in-process `_jobLock` and try-acquire the account's `job.lock`; `signOut` runs under `_jobLock` because it may dispose an IMAP mailbox. `GET /health` → `{app, version, https}` identifies a running MailClassification (single instance, `service status`); `AllowedOrigins(port, httpsPort)` is the one place that builds the Host/Origin allowlists |
 | `Web/wwwroot/*` | `index.html` + `style.css` adapted from jevMail (MIT): a bridge emulates `google.script.run` over `fetch`; Mailboxes card (chips, add/test/sign-in/remove, "Run all mailboxes" queue); `taskpane.html` (Office.js) and icons for the Outlook add-in |
 | Outlook add-in | Classic XML manifest served at `/manifest.xml`; the pane is served by the local server over HTTPS, which the LaunchAgent (§10) keeps running. One work tenant refused the sideload (generic "installation failed" although the manifest passes Microsoft's validator): tenants that disable custom add-ins still block it. An empty account id in the API resolves to the first ready Microsoft mailbox |
 
@@ -138,23 +151,23 @@ token, archiving messages out of the Inbox mid-run never shifts pages.
 | Ctrl+C during a wave | Reservations of unanswered requests are released; they are re-dispatched on resume |
 | Budget would be exceeded | Status `budget`; `continue --max-spend` to raise |
 | Ctrl+C | Pause `user-stop`; `continue` resumes (and re-arms the circuit breaker) |
-| Another process holds the account's `job.lock` (dashboard batch vs. CLI `run`/`continue`) | Refused before any change: "Another jevOutlook process is processing this mailbox right now (dashboard or CLI). Wait for it or stop it, then retry." `run --all-accounts` skips that mailbox (exit 1) |
+| Another process holds the account's `job.lock` (dashboard batch vs. CLI `run`/`continue`) | Refused before any change: "Another MailClassification process is processing this mailbox right now (dashboard or CLI). Wait for it or stop it, then retry." `run --all-accounts` skips that mailbox (exit 1) |
 
 ## 7. Persistence
 
 ```
-~/.jevoutlook/
+~/.mailclassification/
   config.json            client id, tenant, provider, endpoint/model overrides, optional API key, device-code flag
   rules.json             saved rules (shared by every mailbox)
   accounts.json          [{id, email, kind: graph|imap, host, port, gmail, username, tenantId}] — no secrets
-  secrets.json           IMAP passwords, non-macOS only (macOS: Keychain, service "jevoutlook")
+  secrets.json           IMAP passwords, non-macOS only (macOS: Keychain, service "mailclassification")
   accounts/<id>/
     auth-record.json     MSAL AuthenticationRecord (Microsoft mailboxes; tokens live in the OS cache)
     job.json             current session: options, cursor (sort key), counters, spend, pending items with decisions
     job-rules.json       rules frozen for the current session
     job.lock             exclusive lock (FileStream + FileShare.None = advisory flock on Unix); never deleted
   logs/ui.log            stdout/stderr of the LaunchAgent
-~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist   LaunchAgent (macOS), no secret
+~/Library/LaunchAgents/com.vincentlauriat.mailclassification.plist   LaunchAgent (macOS), no secret
 ```
 
 `<id>` is derived from the address (`alice@contoso.com` → `alice-contoso.com`). All
@@ -168,6 +181,18 @@ dashboard and a terminal `continue` could process the same `Running` session at 
 messages and overwrite each other's `SpentUsd` (up to about twice the cap) and status (a cancel lost). The lock is
 per open file description, so a second open fails even inside the same process; the kernel releases it when the
 holder exits or crashes, and `using` releases it on exceptions and cancellation.
+
+**Rename migration (jevOutlook → MailClassification, 2026-09-28).**
+
+| Legacy | Current | How it moves |
+| --- | --- | --- |
+| `~/.jevoutlook/` | `~/.mailclassification/` | `AppPaths.MigrateLegacyRoot()`, first thing in `Main`: when no custom home is set and the new root is missing, `Directory.Move`; when the new root holds only `bin/` (a publish done before the first run), the legacy entries are moved one by one and names already present stay behind. Never runs once the new root has state. One line on stderr |
+| `JEVOUTLOOK_HOME`, `JEVOUTLOOK_DEBUG` | `MAILCLASSIFICATION_HOME`, `MAILCLASSIFICATION_DEBUG` | the legacy names are read as fallbacks |
+| Keychain service `jevoutlook` | `mailclassification` | lazy: on a read miss the legacy item is copied to the new service, then deleted (`SecretStore.GetWithLegacyFallback`); `Delete` removes both |
+| LaunchAgent `com.vincentlauriat.jevoutlook` | `com.vincentlauriat.mailclassification` | `service install` boots out and deletes the legacy agent; `status` / `uninstall` report a leftover one |
+| `/health` `app: "jevoutlook"` | `"mailclassification"` | `ParseHealth` accepts both, so an old server still running during the upgrade is not "foreign" |
+| MSAL token cache name `jevoutlook` | **unchanged** | an internal identifier; renaming it would drop every cached Microsoft sign-in and force a new device-code login. Auth records (`accounts/<id>/auth-record.json`) move with the state directory |
+| Add-in manifest `<Id>` | **unchanged** | stable identity; `DisplayName`/`ProviderName` changed, manifest version 1.0.0.0 → 1.1.0.0 |
 
 ## 8. Security notes
 
@@ -183,8 +208,8 @@ holder exits or crashes, and `using` releases it on exceptions and cancellation.
 - The dashboard listens on 127.0.0.1 only and rejects DNS-rebinding / cross-site calls: `Host` allowlist
   (421), same-origin `Origin` / `Sec-Fetch-Site` and `application/json` required on `/api/*` (403).
   Passwords entered in the page travel only to that loopback server. `GET /health` sits behind the same Host check.
-- The LaunchAgent plist is plaintext: `BuildLaunchAgentPlist` writes only `DOTNET_ROOT` and `JEVOUTLOOK_HOME`
-  (allowlist), never `OPENROUTER_API_KEY` / `JEV_API_KEY`; the agent reads the key stored with `key set`.
+- The LaunchAgent plist is plaintext: `BuildLaunchAgentPlist` writes only `DOTNET_ROOT`, `MAILCLASSIFICATION_HOME` and
+  the legacy `JEVOUTLOOK_HOME` (allowlist), never `OPENROUTER_API_KEY` / `JEV_API_KEY`; the agent reads the key stored with `key set`.
   `launchctl` and `id -u` are started with `ArgumentList`, never through a shell.
 
 ## 9. Verification status (2026-09-28)
@@ -209,25 +234,30 @@ holder exits or crashes, and `using` releases it on exceptions and cancellation.
   IMAP keyword mapping, add-only label writes, keyword-based "already labelled" recognition and collision validation,
   `IMailbox` disposal (Graph no-op), per-account `job.lock` (same-process refusal, release on exception). A second
   process was checked by hand: refused while held (also by `flock(LOCK_NB)`), acquired once the holder exited.
+- 2026-09-28, rename to MailClassification: 128 tests pass (+14: state-directory migration on temp directories — move,
+  bin-only merge, no-op when the new root has state, idempotence — Keychain legacy fallback through injected delegates,
+  legacy `/health` name, legacy LaunchAgent plist detection, manifest name and stable id). The published binary was run
+  against a scratch `HOME` holding a seeded `.jevoutlook`: moved on the first command, no-op on the second.
 
 ## 10. Keeping the server running (macOS LaunchAgent)
 
-The Outlook add-in pane is served by `jevoutlook ui` itself, and an Office web add-in cannot start a local process.
+The Outlook add-in pane is served by `mailclassification ui` itself, and an Office web add-in cannot start a local process.
 Decision of 2026-09-28 (option 1): a per-user LaunchAgent keeps the server up from login onward.
 
 | Piece | Behaviour |
 | --- | --- |
-| `service install [--port] [--https-port] [--exe]` | Writes `~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist` (`ProgramArguments` = exe `ui --no-open --port --https-port`, `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30, stdout/stderr → `~/.jevoutlook/logs/ui.log`), then `launchctl bootout` (if loaded) + `bootstrap gui/<uid>`. Exe defaults to the running one; warns for `bin/Debug`/`bin/Release` and recommends a `dotnet publish` copy in `~/.jevoutlook/bin` |
+| `service install [--port] [--https-port] [--exe]` | Writes `~/Library/LaunchAgents/com.vincentlauriat.mailclassification.plist` (`ProgramArguments` = exe `ui --no-open --port --https-port`, `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30, stdout/stderr → `~/.mailclassification/logs/ui.log`), then `launchctl bootout` (if loaded) + `bootstrap gui/<uid>`. Exe defaults to the running one; warns for `bin/Debug`/`bin/Release` and recommends a `dotnet publish` copy in `~/.mailclassification/bin` |
 | `service status` | Plist present, agent loaded (`launchctl print`), `/health` probe, log path; exit 1 when the server does not answer |
 | `service restart` | `launchctl kickstart -k gui/<uid>/<label>` (after a new publish) |
-| `service uninstall` | `launchctl bootout`, then deletes the plist |
-| Single instance | `ui` first probes `http://127.0.0.1:{port}/health` (2 s): a jevOutlook answer → "already running", open the browser, exit 0; any other answer → clear error instead of Kestrel's bind exception |
+| `service uninstall` | `launchctl bootout`, then deletes the plist; mentions a leftover jevOutlook agent |
+| Legacy agent | `service install` first boots out `com.vincentlauriat.jevoutlook` (if loaded) and deletes its plist (`ServiceCommand.LegacyPlistIn`), before bootstrapping and before the `/health` probe, since the probe also accepts the legacy server's answer |
+| Single instance | `ui` first probes `http://127.0.0.1:{port}/health` (2 s): a MailClassification (or legacy jevOutlook) answer → "already running", open the browser, exit 0; any other answer → clear error instead of Kestrel's bind exception |
 
 Known behaviour: while a `ui` started by hand holds the port, the agent's copy exits 0 ("already running") and launchd,
 with `KeepAlive` true, starts it again every 30 s (one log line each time). `KeepAlive = {SuccessfulExit: false}` would
 stop that, at the cost of not restarting after a clean exit.
 
-Option 2 (on-demand start from a statically hosted pane through a `jevoutlook://start` URL handler) is designed, not
+Option 2 (on-demand start from a statically hosted pane through a `mailclassification://start` URL handler) is designed, not
 built: see [docs/design/addin-on-demand-start.md](docs/design/addin-on-demand-start.md).
 
 User-facing guide to the add-in (install, sideload per client, security, troubleshooting): [docs/ADDIN.md](docs/ADDIN.md).

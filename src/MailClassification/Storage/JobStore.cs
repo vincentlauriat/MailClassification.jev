@@ -1,7 +1,7 @@
-using JevOutlook.Rules;
-using JevOutlook.Triage;
+using MailClassification.Rules;
+using MailClassification.Triage;
 
-namespace JevOutlook.Storage;
+namespace MailClassification.Storage;
 
 /// <summary>Checkpointed processing session of one account (one session at a time per mailbox).</summary>
 public sealed class JobStore
@@ -20,12 +20,12 @@ public sealed class JobStore
 
     /// <summary>Shown when another process (dashboard or CLI) holds this account's job lock.</summary>
     public const string LockedMessage =
-        "Another jevOutlook process is processing this mailbox right now (dashboard or CLI). Wait for it or stop it, then retry.";
+        "Another MailClassification process is processing this mailbox right now (dashboard or CLI). Wait for it or stop it, then retry.";
 
     /// <summary>
     /// Exclusive, cross-process lock on this account's session (<c>accounts/&lt;id&gt;/job.lock</c>),
     /// or null when another holder has it. Without it the dashboard (always running as a
-    /// LaunchAgent) and <c>jevoutlook continue</c> could process the same session at once: both pay
+    /// LaunchAgent) and <c>mailclassification continue</c> could process the same session at once: both pay
     /// for the same messages and each overwrites the other's spend and status. Non-blocking.
     /// </summary>
     public IDisposable? TryLock() => TryLockFile(AppPaths.AccountJobLock(AccountId));

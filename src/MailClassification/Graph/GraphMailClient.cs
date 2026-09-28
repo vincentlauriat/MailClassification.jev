@@ -4,9 +4,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using JevOutlook.Mail;
+using MailClassification.Mail;
 
-namespace JevOutlook.Graph;
+namespace MailClassification.Graph;
 
 public sealed record WellKnownFolders(string Inbox, string? Archive, string? JunkEmail, string? DeletedItems, string? Drafts, string? SentItems)
 {
@@ -354,7 +354,7 @@ public sealed class GraphMailClient : IMailbox
                 var part = parts[i];
                 if (part.Ok || part.Status == 404) continue; // 404: message moved/deleted meanwhile — nothing left to do
                 if (part.AuthFailure)
-                    return new WriteOutcome(false, false, "Microsoft Graph authorization failed while trying to " + action + " messages. Sign in again (jevoutlook account login).");
+                    return new WriteOutcome(false, false, "Microsoft Graph authorization failed while trying to " + action + " messages. Sign in again (mailclassification account login).");
                 if (!part.Retryable)
                     return new WriteOutcome(false, false, $"Microsoft Graph rejected a request to {action} a message with HTTP {part.Status}. {part.Error}".Trim());
                 retryAfter = Math.Max(retryAfter, part.RetryAfterMs);
@@ -536,7 +536,7 @@ public sealed class GraphMailClient : IMailbox
 
     public static bool IsTransient(int status) => status == 408 || status == 409 || status == 425 || status == 429 || status >= 500 || status == 0;
 
-    private static readonly bool DebugEnabled = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JEVOUTLOOK_DEBUG"));
+    private static readonly bool DebugEnabled = Storage.AppPaths.DebugEnabled;
 
     private static void Debug(string message)
     {

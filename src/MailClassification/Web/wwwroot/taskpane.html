@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>jevOutlook</title>
+  <title>MailClassification</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
     :root { --ink:#1f2328; --muted:#6b7280; --line:#e5e7eb; --bg:#f7f8fa; --card:#fff; --accent:#0f6cbd; --good:#137a4b; --warn:#9a4a00; --bad:#b42318; }
@@ -48,7 +48,7 @@
 <body>
   <header>
     <img src="logo.svg" alt="">
-    <b>jevOutlook</b>
+    <b>MailClassification</b>
     <div class="status" id="status">Connecting…</div>
   </header>
   <main>
@@ -121,7 +121,7 @@
         // Jobs are kept per mailbox; the pane works on the default (first Microsoft 365) one.
         state.job = (ui.jobs && ui.defaultAccount) ? ui.jobs[ui.defaultAccount] : null;
         if (state.job && state.job.status === 'running') renderJob(state.job);
-      }).catch(function(e) { el('status').textContent = 'Local server unreachable: ' + e.message + ' — run "jevoutlook service status", then "jevoutlook service restart" (or "service install" once).'; });
+      }).catch(function(e) { el('status').textContent = 'Local server unreachable: ' + e.message + ' — run "mailclassification service status", then "mailclassification service restart" (or "service install" once).'; });
     }
 
     // ----- current message -----

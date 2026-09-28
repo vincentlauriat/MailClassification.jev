@@ -1,15 +1,15 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using JevOutlook.Graph;
-using JevOutlook.Imap;
-using JevOutlook.Jev;
-using JevOutlook.Mail;
-using JevOutlook.Rules;
-using JevOutlook.Storage;
-using JevOutlook.Triage;
+using MailClassification.Graph;
+using MailClassification.Imap;
+using MailClassification.Jev;
+using MailClassification.Mail;
+using MailClassification.Rules;
+using MailClassification.Storage;
+using MailClassification.Triage;
 
-namespace JevOutlook.Cli;
+namespace MailClassification.Cli;
 
 public static class Program
 {
@@ -25,6 +25,7 @@ public static class Program
 
         try
         {
+            if (AppPaths.MigrateLegacyRoot() is { } moved) Console.Error.WriteLine(moved);
             var migrated = await GraphTokenProvider.MigrateLegacyAsync(cts.Token);
             if (migrated is not null) Console.Error.WriteLine($"Migrated the existing Microsoft sign-in into account '{migrated.Id}' ({migrated.Email}).");
 
@@ -59,7 +60,7 @@ public static class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine("Error: " + ex.Message);
-            if (Environment.GetEnvironmentVariable("JEVOUTLOOK_DEBUG") is { Length: > 0 }) Console.Error.WriteLine(ex);
+            if (AppPaths.DebugEnabled) Console.Error.WriteLine(ex);
             return 1;
         }
     }
@@ -71,11 +72,11 @@ public static class Program
     private static int Help()
     {
         Console.WriteLine("""
-            jevoutlook — AI-assisted mailbox classification with Jev (TypeSafe) via OpenRouter
+            mailclassification — AI-assisted mailbox classification with Jev (TypeSafe) via OpenRouter
             Works with Microsoft 365 / Outlook.com (Graph), Gmail (IMAP + app password) and any IMAP server.
 
             USAGE
-              jevoutlook <command> [options]
+              mailclassification <command> [options]
 
             MAILBOXES
               account add <email> --m365 [--tenant <id>] [--device-code]
@@ -144,20 +145,22 @@ public static class Program
 
             ENVIRONMENT
               OPENROUTER_API_KEY / JEV_API_KEY   API key (takes precedence over the stored key)
-              JEVOUTLOOK_HOME                    State directory (default ~/.jevoutlook)
+              MAILCLASSIFICATION_HOME            State directory (default ~/.mailclassification)
+              MAILCLASSIFICATION_DEBUG           Print full exception details
+              (JEVOUTLOOK_HOME / JEVOUTLOOK_DEBUG from jevOutlook are still read as fallbacks)
             """);
         return 0;
     }
 
     private static int Version()
     {
-        Console.WriteLine("jevoutlook " + (typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
+        Console.WriteLine("mailclassification " + (typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
         return 0;
     }
 
     private static int Unknown(string command)
     {
-        Console.Error.WriteLine($"Unknown command '{command}'. Run 'jevoutlook help'.");
+        Console.Error.WriteLine($"Unknown command '{command}'. Run 'mailclassification help'.");
         return 2;
     }
 
@@ -173,7 +176,7 @@ public static class Program
             case "list":
             {
                 var accounts = AccountStore.Load();
-                if (accounts.Count == 0) { Console.WriteLine("No mailbox configured. Add one with: jevoutlook account add <email> --m365 | --gmail | --imap <host>"); return 0; }
+                if (accounts.Count == 0) { Console.WriteLine("No mailbox configured. Add one with: mailclassification account add <email> --m365 | --gmail | --imap <host>"); return 0; }
                 foreach (var a in accounts)
                 {
                     var job = new JobStore(a.Id).Load();
@@ -217,7 +220,7 @@ public static class Program
             }
             case "remove":
             {
-                if (args.Length < 2) throw new ArgumentException("Usage: jevoutlook account remove <id>");
+                if (args.Length < 2) throw new ArgumentException("Usage: mailclassification account remove <id>");
                 var account = AccountStore.Require(args[1]);
                 if (new JobStore(account.Id).Load() is { Status: JobStatus.Running }) throw new InvalidOperationException("Stop processing on this mailbox before removing it.");
                 AccountStore.Remove(account.Id);
@@ -225,14 +228,14 @@ public static class Program
                 return 0;
             }
             default:
-                throw new ArgumentException("Usage: jevoutlook account list | add <email> (--m365 | --gmail | --imap <host[:port]>) | login <id> | password <id> | test <id> | remove <id>");
+                throw new ArgumentException("Usage: mailclassification account list | add <email> (--m365 | --gmail | --imap <host[:port]>) | login <id> | password <id> | test <id> | remove <id>");
         }
     }
 
     private static async Task<int> AccountAddAsync(string[] args, CancellationToken ct)
     {
         var email = args.FirstOrDefault(a => !a.StartsWith("--") && a.Contains('@'))
-            ?? throw new ArgumentException("Usage: jevoutlook account add <email> --m365 | --gmail | --imap <host[:port]>");
+            ?? throw new ArgumentException("Usage: mailclassification account add <email> --m365 | --gmail | --imap <host[:port]>");
         var account = new MailAccount { Id = MailAccount.IdFor(email), Email = email.Trim() };
 
         if (args.Contains("--m365") || args.Contains("--graph") || args.Contains("--outlook"))
@@ -333,7 +336,7 @@ public static class Program
         if (args.Length == 0 || args[0] == "show")
         {
             Console.WriteLine($"State directory : {AppPaths.Root}");
-            Console.WriteLine($"Mailboxes       : {AccountStore.Load().Count} (jevoutlook account list)");
+            Console.WriteLine($"Mailboxes       : {AccountStore.Load().Count} (mailclassification account list)");
             Console.WriteLine($"Client id       : {config.ClientId ?? "(not set)"}");
             Console.WriteLine($"Tenant id       : {config.TenantId}");
             Console.WriteLine($"Provider        : {config.Provider} → {config.ResolvedEndpoint}");
@@ -362,7 +365,7 @@ public static class Program
             Console.WriteLine("Saved.");
             return 0;
         }
-        throw new ArgumentException("Usage: jevoutlook config show | config set <client-id|tenant-id|provider|endpoint|model|device-code> <value>");
+        throw new ArgumentException("Usage: mailclassification config show | config set <client-id|tenant-id|provider|endpoint|model|device-code> <value>");
     }
 
     /// <summary>Kept for muscle memory: 'auth' is 'account login' on the selected (or only) mailbox.</summary>
@@ -377,7 +380,7 @@ public static class Program
         }
         if (args.Contains("--status"))
         {
-            if (!MailboxFactory.IsReady(account)) { Console.WriteLine($"'{account.Id}' is not signed in. Run: jevoutlook account login {account.Id}"); return 1; }
+            if (!MailboxFactory.IsReady(account)) { Console.WriteLine($"'{account.Id}' is not signed in. Run: mailclassification account login {account.Id}"); return 1; }
             var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), Http, ct);
             Console.WriteLine("Signed in as " + await mailbox.GetIdentityAsync(ct));
             return 0;
@@ -398,7 +401,7 @@ public static class Program
         switch (sub)
         {
             case "set":
-                if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1])) throw new ArgumentException("Usage: jevoutlook key set <api-key>");
+                if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1])) throw new ArgumentException("Usage: mailclassification key set <api-key>");
                 config.ApiKey = args[1].Trim();
                 config.Save();
                 Console.WriteLine($"{config.ProviderLabel} API key stored in {AppPaths.Config} (mode 0600).");
@@ -422,7 +425,7 @@ public static class Program
                 return 0;
             }
             default:
-                throw new ArgumentException("Usage: jevoutlook key set <api-key> | key test [<api-key>] | key clear");
+                throw new ArgumentException("Usage: mailclassification key set <api-key> | key test [<api-key>] | key clear");
         }
     }
 
@@ -432,14 +435,14 @@ public static class Program
 
     private static int Playbooks()
     {
-        foreach (var playbook in JevOutlook.Rules.Playbooks.All)
+        foreach (var playbook in MailClassification.Rules.Playbooks.All)
         {
             Console.WriteLine($"{playbook.Id,-28} {playbook.Name}");
             Console.WriteLine($"{string.Empty,-28} {playbook.Summary}");
             Console.WriteLine($"{string.Empty,-28} categories: {string.Join(", ", playbook.Rules.Select(r => r.Spam ? r.Name + "*" : r.Name))}");
             Console.WriteLine();
         }
-        Console.WriteLine("* archive eligible. Load one with: jevoutlook rules use <playbook-id>");
+        Console.WriteLine("* archive eligible. Load one with: mailclassification rules use <playbook-id>");
         return 0;
     }
 
@@ -460,15 +463,15 @@ public static class Program
                 return 0;
             case "use":
             {
-                if (args.Length < 2) throw new ArgumentException("Usage: jevoutlook rules use <playbook-id>");
-                var playbook = JevOutlook.Rules.Playbooks.Find(args[1]) ?? throw new ArgumentException($"Unknown playbook '{args[1]}'. Run 'jevoutlook playbooks'.");
+                if (args.Length < 2) throw new ArgumentException("Usage: mailclassification rules use <playbook-id>");
+                var playbook = MailClassification.Rules.Playbooks.Find(args[1]) ?? throw new ArgumentException($"Unknown playbook '{args[1]}'. Run 'mailclassification playbooks'.");
                 PrintRules(RuleStore.Save(playbook.Rules));
                 Console.WriteLine($"Rules set to playbook '{playbook.Name}'.");
                 return 0;
             }
             case "import":
             {
-                if (args.Length < 2) throw new ArgumentException("Usage: jevoutlook rules import <file.json>");
+                if (args.Length < 2) throw new ArgumentException("Usage: mailclassification rules import <file.json>");
                 var rules = JsonSerializer.Deserialize<List<LabelRule>>(File.ReadAllText(args[1]), JsonStore.Options)
                     ?? throw new ArgumentException("The file does not contain a JSON array of rules.");
                 PrintRules(RuleStore.Save(rules));
@@ -477,13 +480,13 @@ public static class Program
             }
             case "export":
             {
-                if (args.Length < 2) throw new ArgumentException("Usage: jevoutlook rules export <file.json>");
+                if (args.Length < 2) throw new ArgumentException("Usage: mailclassification rules export <file.json>");
                 File.WriteAllText(args[1], JsonSerializer.Serialize(RuleStore.Load(), JsonStore.Options));
                 Console.WriteLine($"Rules written to {args[1]}.");
                 return 0;
             }
             default:
-                throw new ArgumentException("Usage: jevoutlook rules show | use <playbook-id> | import <file> | export <file> | reset | path");
+                throw new ArgumentException("Usage: mailclassification rules show | use <playbook-id> | import <file> | export <file> | reset | path");
         }
     }
 
@@ -511,16 +514,16 @@ public static class Program
         // Single instance: a second 'ui' (by hand while the LaunchAgent runs, or the
         // agent while a manual one runs) reuses the running server instead of failing to bind.
         var (state, version) = await Web.UiServer.ProbeAsync(Http, port, ct);
-        if (state == Web.UiServer.HealthState.JevOutlook)
+        if (state == Web.UiServer.HealthState.Ours)
         {
             var url = $"http://127.0.0.1:{port}/";
-            Console.WriteLine($"jevOutlook {version} is already running: {url}");
+            Console.WriteLine($"MailClassification {version} is already running: {url}");
             if (!args.Contains("--no-open")) Web.UiServer.TryOpenBrowser(url);
             return 0;
         }
         if (state == Web.UiServer.HealthState.Foreign)
         {
-            throw new InvalidOperationException($"Port {port} answers but not as a current jevOutlook (another program, or an older jevOutlook without /health). Stop it, or pick another port with --port.");
+            throw new InvalidOperationException($"Port {port} answers but not as MailClassification (another program, or an older build without /health). Stop it, or pick another port with --port.");
         }
 
         await new Web.UiServer(Http).RunAsync(port, args.Contains("--no-https") ? null : httpsPort, openBrowser: !args.Contains("--no-open"), ct);
@@ -530,14 +533,14 @@ public static class Program
     /// <summary>Write the Outlook add-in manifest to release/ for sideloading.</summary>
     private static int AddIn(string[] args)
     {
-        if (args.Length == 0 || args[0] != "manifest") throw new ArgumentException("Usage: jevoutlook addin manifest [--https-port 5178] [--out <file.xml>]");
+        if (args.Length == 0 || args[0] != "manifest") throw new ArgumentException("Usage: mailclassification addin manifest [--https-port 5178] [--out <file.xml>]");
         var httpsPort = (int)Number(args, "--https-port", 5178);
-        var output = Option(args, "--out") ?? Path.Combine(Directory.GetCurrentDirectory(), "release", "jevoutlook-manifest.xml");
+        var output = Option(args, "--out") ?? Path.Combine(Directory.GetCurrentDirectory(), "release", "mailclassification-manifest.xml");
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(output, Web.UiServer.BuildManifest(httpsPort));
         Console.WriteLine($"Manifest written to {output}");
         Console.WriteLine("Sideload it in Outlook: Get Add-ins → My add-ins → Add a custom add-in → Add from file.");
-        Console.WriteLine("Run 'jevoutlook service install' once so the pane is always available (macOS), or keep 'jevoutlook ui' running.");
+        Console.WriteLine("Run 'mailclassification service install' once so the pane is always available (macOS), or keep 'mailclassification ui' running.");
         return 0;
     }
 
@@ -548,7 +551,7 @@ public static class Program
     private static async Task<int> CleanupAsync(string[] args, CancellationToken ct)
     {
         if (args.Length < 2 || args[0] != "remove-category" || string.IsNullOrWhiteSpace(args[1]))
-            throw new ArgumentException("Usage: jevoutlook cleanup remove-category <name> [--account <id>] [--dry-run] [--keep-master]");
+            throw new ArgumentException("Usage: mailclassification cleanup remove-category <name> [--account <id>] [--dry-run] [--keep-master]");
         var category = args[1].Trim();
         var dryRun = args.Contains("--dry-run");
         await using var mailbox = await MailboxFactory.OpenAsync(ResolveAccount(args), AppConfig.Load(), Http, ct);
@@ -602,7 +605,7 @@ public static class Program
         var apiKey = config.ResolveApiKey(Option(args, "--api-key"));
         var rules = RuleStore.Load();
         var accounts = args.Contains("--all-accounts") ? AccountStore.Load() : [ResolveAccount(args)];
-        if (accounts.Count == 0) throw new InvalidOperationException("No mailbox is configured. Add one with: jevoutlook account add <email> …");
+        if (accounts.Count == 0) throw new InvalidOperationException("No mailbox is configured. Add one with: mailclassification account add <email> …");
 
         if (!options.DryRun && options.Mode == RunMode.LabelsArchive && !args.Contains("--yes"))
         {
@@ -684,7 +687,7 @@ public static class Program
             ConsoleSink.PrintSummary(job);
             if (job.Pending.Count > 0) Console.WriteLine($"  Pending       : {job.Pending.Count} message(s) checkpointed for the next batch");
         }
-        if (!any) Console.WriteLine("No processing session. Start one with: jevoutlook run");
+        if (!any) Console.WriteLine("No processing session. Start one with: mailclassification run");
         return 0;
     }
 

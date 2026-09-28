@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace JevOutlook.Storage;
+namespace MailClassification.Storage;
 
 public static class AccountKind
 {
@@ -63,7 +63,7 @@ public static class AccountStore
     }
 
     public static MailAccount Require(string idOrEmail) =>
-        Find(idOrEmail) ?? throw new ArgumentException($"Unknown account '{idOrEmail}'. Run 'jevoutlook account list'.");
+        Find(idOrEmail) ?? throw new ArgumentException($"Unknown account '{idOrEmail}'. Run 'mailclassification account list'.");
 
     /// <summary>
     /// The account to use when none is named: the only one configured, or an error
@@ -75,7 +75,7 @@ public static class AccountStore
         var accounts = Load();
         return accounts.Count switch
         {
-            0 => throw new InvalidOperationException("No mailbox is configured. Add one with: jevoutlook account add <email> --m365 | --gmail | --imap <host>"),
+            0 => throw new InvalidOperationException("No mailbox is configured. Add one with: mailclassification account add <email> --m365 | --gmail | --imap <host>"),
             1 => accounts[0],
             _ => throw new ArgumentException("Several mailboxes are configured; choose one with --account <id>: " + string.Join(", ", accounts.Select(a => a.Id))),
         };
@@ -85,7 +85,7 @@ public static class AccountStore
     {
         var accounts = Load();
         if (accounts.Any(a => string.Equals(a.Id, account.Id, StringComparison.OrdinalIgnoreCase)))
-            throw new ArgumentException($"An account with id '{account.Id}' already exists. Remove it first: jevoutlook account remove {account.Id}");
+            throw new ArgumentException($"An account with id '{account.Id}' already exists. Remove it first: mailclassification account remove {account.Id}");
         account.CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         accounts.Add(account);
         Save(accounts);

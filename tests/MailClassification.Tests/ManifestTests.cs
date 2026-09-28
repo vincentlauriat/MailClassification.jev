@@ -1,7 +1,7 @@
 using System.Xml.Linq;
-using JevOutlook.Web;
+using MailClassification.Web;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class ManifestTests
 {
@@ -20,5 +20,16 @@ public class ManifestTests
         Assert.DoesNotContain("http://127.0.0.1", xml);
         Assert.Contains("ReadWriteItem", xml);
         Assert.DoesNotContain("SupportsPinning", xml); // only valid in VersionOverrides 1.1
+    }
+
+    [Fact]
+    public void Manifest_carries_the_new_name_and_keeps_the_stable_add_in_id()
+    {
+        var doc = XDocument.Parse(UiServer.BuildManifest(5178));
+        var ns = doc.Root!.Name.Namespace;
+        Assert.Equal("7c1f3f0e-6d2a-4b5e-9c1a-2f0e8a5d4b31", doc.Root.Element(ns + "Id")!.Value); // renaming must not change the identity
+        Assert.Equal("MailClassification", doc.Root.Element(ns + "DisplayName")!.Attribute("DefaultValue")!.Value);
+        Assert.Equal("MailClassification", doc.Root.Element(ns + "ProviderName")!.Value);
+        Assert.DoesNotContain("jevOutlook", doc.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 }

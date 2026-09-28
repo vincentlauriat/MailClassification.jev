@@ -1,6 +1,6 @@
-using JevOutlook.Web;
+using MailClassification.Web;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class AddInDecisionTests
 {

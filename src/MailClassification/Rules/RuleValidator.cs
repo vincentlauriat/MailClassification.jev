@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
-using JevOutlook.Imap;
+using MailClassification.Imap;
 
-namespace JevOutlook.Rules;
+namespace MailClassification.Rules;
 
 public sealed class RuleValidationException(string message) : Exception(message);
 

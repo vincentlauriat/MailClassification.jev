@@ -1,12 +1,12 @@
-using JevOutlook.Imap;
-using JevOutlook.Mail;
-using JevOutlook.Rules;
-using JevOutlook.Triage;
-using JevOutlook.Storage;
+using MailClassification.Imap;
+using MailClassification.Mail;
+using MailClassification.Rules;
+using MailClassification.Triage;
+using MailClassification.Storage;
 using MailKit;
 using MimeKit;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class ImapMailboxTests
 {
@@ -96,7 +96,7 @@ public class ImapMailboxTests
         // Written by an earlier session: the keyword form of the rule name.
         Assert.True(TriageEngine.HasConfiguredCategory(["\\Seen", "__traiter"], rules, mailbox.StoredLabel));
         Assert.True(TriageEngine.HasConfiguredCategory(["JEV-JUNK"], rules, mailbox.StoredLabel));
-        // A client's junk verdict is not jevOutlook's "junk" rule.
+        // A client's junk verdict is not MailClassification's "junk" rule.
         Assert.False(TriageEngine.HasConfiguredCategory(["Junk"], rules, mailbox.StoredLabel));
         Assert.False(TriageEngine.HasConfiguredCategory(["$Junk", "NonJunk"], rules, mailbox.StoredLabel));
         Assert.Equal("__traiter", mailbox.StoredLabel("À traiter"));

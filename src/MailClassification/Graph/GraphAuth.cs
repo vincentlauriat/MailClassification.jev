@@ -1,8 +1,8 @@
 using Azure.Core;
 using Azure.Identity;
-using JevOutlook.Storage;
+using MailClassification.Storage;
 
-namespace JevOutlook.Graph;
+namespace MailClassification.Graph;
 
 /// <summary>
 /// Delegated Microsoft Graph sign-in through Azure.Identity, one record per
@@ -20,7 +20,7 @@ public sealed class GraphTokenProvider
         if (string.IsNullOrWhiteSpace(config.ClientId))
         {
             throw new InvalidOperationException(
-                "No Entra ID application (client) id is configured. Run: jevoutlook config set client-id <guid>");
+                "No Entra ID application (client) id is configured. Run: mailclassification config set client-id <guid>");
         }
 
         var cache = new TokenCachePersistenceOptions { Name = AppPaths.TokenCacheName };
@@ -35,7 +35,7 @@ public sealed class GraphTokenProvider
                 TokenCachePersistenceOptions = cache,
                 AuthenticationRecord = record,
                 // Never prompt in the middle of a batch: GetTokenAsync throws AuthenticationRequiredException
-                // instead, which is turned into "run: jevoutlook account login". SignInAsync prompts explicitly.
+                // instead, which is turned into "run: mailclassification account login". SignInAsync prompts explicitly.
                 DisableAutomaticAuthentication = true,
                 DeviceCodeCallback = (info, _) =>
                 {
@@ -79,11 +79,11 @@ public sealed class GraphTokenProvider
         }
         catch (AuthenticationRequiredException)
         {
-            throw new InvalidOperationException("Microsoft sign-in is required or has expired. Run: jevoutlook account login <id>");
+            throw new InvalidOperationException("Microsoft sign-in is required or has expired. Run: mailclassification account login <id>");
         }
         catch (CredentialUnavailableException ex)
         {
-            throw new InvalidOperationException("Microsoft sign-in is unavailable: " + ex.Message + " Run: jevoutlook account login <id>");
+            throw new InvalidOperationException("Microsoft sign-in is unavailable: " + ex.Message + " Run: mailclassification account login <id>");
         }
     }
 

@@ -1,9 +1,9 @@
 using System.Text.Json;
-using JevOutlook;
-using JevOutlook.Graph;
-using JevOutlook.Mail;
+using MailClassification;
+using MailClassification.Graph;
+using MailClassification.Mail;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class MessageContentTests
 {

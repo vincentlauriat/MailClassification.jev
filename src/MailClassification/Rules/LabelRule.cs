@@ -1,4 +1,4 @@
-namespace JevOutlook.Rules;
+namespace MailClassification.Rules;
 
 /// <summary>
 /// One user-defined classification rule. <see cref="Spam"/> means the category

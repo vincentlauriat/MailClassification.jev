@@ -1,6 +1,6 @@
-using JevOutlook.Rules;
+using MailClassification.Rules;
 
-namespace JevOutlook.Storage;
+namespace MailClassification.Storage;
 
 /// <summary>Saved rule set (falls back to the Universal inbox playbook).</summary>
 public static class RuleStore

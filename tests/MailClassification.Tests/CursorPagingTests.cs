@@ -1,9 +1,9 @@
-using JevOutlook.Graph;
-using JevOutlook.Mail;
-using JevOutlook.Rules;
-using JevOutlook.Triage;
+using MailClassification.Graph;
+using MailClassification.Mail;
+using MailClassification.Rules;
+using MailClassification.Triage;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class CursorPagingTests
 {

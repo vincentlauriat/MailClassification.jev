@@ -1,7 +1,7 @@
-using JevOutlook;
-using JevOutlook.Rules;
+using MailClassification;
+using MailClassification.Rules;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class RuleValidatorTests
 {

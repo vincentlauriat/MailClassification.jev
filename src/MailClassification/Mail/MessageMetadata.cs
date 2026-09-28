@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace JevOutlook.Mail;
+namespace MailClassification.Mail;
 
 /// <summary>
 /// Normalized, cheap view of one Outlook message: the equivalent of the Gmail

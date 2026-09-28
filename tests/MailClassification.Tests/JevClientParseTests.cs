@@ -1,8 +1,8 @@
-using JevOutlook;
-using JevOutlook.Jev;
-using JevOutlook.Rules;
+using MailClassification;
+using MailClassification.Jev;
+using MailClassification.Rules;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class JevClientParseTests
 {

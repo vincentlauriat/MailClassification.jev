@@ -1,10 +1,10 @@
 using System.Text;
 using System.Text.Json.Nodes;
-using JevOutlook.Graph;
-using JevOutlook.Mail;
-using JevOutlook.Rules;
+using MailClassification.Graph;
+using MailClassification.Mail;
+using MailClassification.Rules;
 
-namespace JevOutlook.Jev;
+namespace MailClassification.Jev;
 
 /// <summary>
 /// Builds one independent Choice request for exactly one message. Rules are

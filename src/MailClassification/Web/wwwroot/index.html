@@ -10,11 +10,11 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <title>jevOutlook — Email Classification</title>
+  <title>MailClassification — Email Classification</title>
 
 
   <!--
-    jevOutlook — local web UI. Layout and stylesheet adapted from jevMail
+    MailClassification — local web UI. Layout and stylesheet adapted from jevMail
     (https://github.com/ilyamk/jev-gmail-ai-spam-filter-and-labeling, MIT License, © 2026 Ilia AGI).
   -->
   <link rel="stylesheet" href="style.css">
@@ -30,7 +30,7 @@
 
   <aside class="sidebar" aria-label="Primary navigation">
 
-    <a class="brand" href="#overview" aria-label="jevOutlook home">
+    <a class="brand" href="#overview" aria-label="MailClassification home">
       <span class="brandMark" aria-hidden="true">
         <img
           class="brandLogo"
@@ -39,7 +39,7 @@
           onerror="this.onerror=null;this.hidden=true;this.parentElement.classList.add('fallback')"
         >
       </span>
-      <span class="brandText">jevOutlook</span>
+      <span class="brandText">MailClassification</span>
     </a>
 
     <div class="navLabel">Workspace</div>
@@ -219,7 +219,7 @@
         >
 
         <label for="saveKey">
-          Store this key in ~/.jevoutlook/config.json (mode 0600) for future sessions.
+          Store this key in ~/.mailclassification/config.json (mode 0600) for future sessions.
         </label>
 
       </div>
@@ -998,7 +998,7 @@
 
 
 <script>
-  /* jevOutlook bridge: the dashboard keeps jevMail's google.script.run calling
+  /* MailClassification bridge: the dashboard keeps jevMail's google.script.run calling
      convention; every server function becomes POST /api/<name> with the
      arguments as a JSON array. */
   (function() {
@@ -1019,7 +1019,7 @@
                 var message = data && data.error ? data.error : ('Server error HTTP ' + r.status);
                 if (fail) fail(new Error(message)); else console.error(message);
               })
-              .catch(function(e) { if (fail) fail(new Error('The local jevOutlook server could not be reached: ' + e.message)); });
+              .catch(function(e) { if (fail) fail(new Error('The local MailClassification server could not be reached: ' + e.message)); });
           };
         }
       });
@@ -1076,7 +1076,7 @@
   function selectAccount(id) {
     if (state.looping) { setStatus('Wait for the current batch to finish before switching mailbox.', 'warn'); return; }
     state.account = id;
-    try { localStorage.setItem('jevoutlook.account', id || ''); } catch (e) {}
+    try { localStorage.setItem('mailclassification.account', id || ''); } catch (e) {}
     state.job = id ? (state.jobs[id] || null) : null;
     el('resultsBody').innerHTML = '';
     renderAccounts();
@@ -1147,7 +1147,7 @@
   function removeAccount() {
     var a = currentAccount();
     if (!a) return;
-    if (!window.confirm('Remove the mailbox ' + a.email + ' from jevOutlook? Its sign-in / password and its processing session are deleted; nothing changes in the mailbox itself.')) return;
+    if (!window.confirm('Remove the mailbox ' + a.email + ' from MailClassification? Its sign-in / password and its processing session are deleted; nothing changes in the mailbox itself.')) return;
     google.script.run.withSuccessHandler(function(res) {
       state.accounts = res.accounts || [];
       delete state.jobs[a.id];
@@ -1168,7 +1168,7 @@
       ? 'Create one at myaccount.google.com/apppasswords (2-step verification must be on). It is verified, then stored in the keychain.'
       : kind === 'imap' ? 'Verified against the server before the mailbox is saved, then stored in the keychain.' : '';
     el('addAccountState').textContent = kind === 'm365' && !state.hasClientId
-      ? 'Set the Entra application id first: jevoutlook config set client-id <guid>.' : '';
+      ? 'Set the Entra application id first: mailclassification config set client-id <guid>.' : '';
   }
   function addAccount() {
     var kind = el('newKind').value;
@@ -3817,7 +3817,7 @@
           if (res.secretBackend) el('secretBackend').textContent = res.secretBackend;
           state.hasClientId = Boolean(res.hasClientId);
           var remembered = null;
-          try { remembered = localStorage.getItem('jevoutlook.account'); } catch (e) { remembered = null; }
+          try { remembered = localStorage.getItem('mailclassification.account') || localStorage.getItem('jevoutlook.account'); } catch (e) { remembered = null; } // jevoutlook.*: pre-rename key
           var selected = state.accounts.filter(function(a) { return a.id === remembered; })[0] || state.accounts[0] || null;
           state.account = selected ? selected.id : null;
           state.job = state.account ? (state.jobs[state.account] || null) : null;

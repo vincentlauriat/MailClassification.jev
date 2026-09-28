@@ -1,11 +1,11 @@
-using JevOutlook.Storage;
+using MailClassification.Storage;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class JobLockTests
 {
     private static string TempLockPath() =>
-        Path.Combine(Path.GetTempPath(), "jevoutlook-tests", Guid.NewGuid().ToString("N"), "job.lock");
+        Path.Combine(Path.GetTempPath(), "mailclassification-tests", Guid.NewGuid().ToString("N"), "job.lock");
 
     [Fact]
     public void Second_acquire_fails_while_held_even_in_the_same_process()

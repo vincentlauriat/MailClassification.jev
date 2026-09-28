@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace JevOutlook.Storage;
+namespace MailClassification.Storage;
 
 /// <summary>Small JSON file store with restrictive file permissions (0600).</summary>
 public static class JsonStore

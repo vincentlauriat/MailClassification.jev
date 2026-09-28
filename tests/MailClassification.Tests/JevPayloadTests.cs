@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using JevOutlook;
-using JevOutlook.Graph;
-using JevOutlook.Mail;
-using JevOutlook.Jev;
-using JevOutlook.Rules;
+using MailClassification;
+using MailClassification.Graph;
+using MailClassification.Mail;
+using MailClassification.Jev;
+using MailClassification.Rules;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class JevPayloadTests
 {

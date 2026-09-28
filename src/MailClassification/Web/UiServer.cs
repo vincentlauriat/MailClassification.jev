@@ -4,12 +4,12 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Identity;
-using JevOutlook.Graph;
-using JevOutlook.Jev;
-using JevOutlook.Mail;
-using JevOutlook.Rules;
-using JevOutlook.Storage;
-using JevOutlook.Triage;
+using MailClassification.Graph;
+using MailClassification.Jev;
+using MailClassification.Mail;
+using MailClassification.Rules;
+using MailClassification.Storage;
+using MailClassification.Triage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -17,7 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace JevOutlook.Web;
+namespace MailClassification.Web;
 
 /// <summary>
 /// Local web dashboard: the counterpart of jevMail's Apps Script web app, for
@@ -37,7 +37,8 @@ public sealed class UiServer
 
     /// <summary>Stable identity of the Outlook add-in (manifest &lt;Id&gt;).</summary>
     public const string AddInId = "7c1f3f0e-6d2a-4b5e-9c1a-2f0e8a5d4b31";
-    public const string AddInVersion = "1.0.0.0";
+    /// <summary>Bumped when the manifest's visible strings change (1.1: renamed jevOutlook → MailClassification).</summary>
+    public const string AddInVersion = "1.1.0.0";
 
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _jobLock = new(1, 1);
@@ -75,7 +76,7 @@ public sealed class UiServer
         }
 
         var url = $"http://127.0.0.1:{port}/";
-        Console.WriteLine($"jevOutlook dashboard: {url}   (Ctrl+C to stop)");
+        Console.WriteLine($"MailClassification dashboard: {url}   (Ctrl+C to stop)");
         if (_httpsPort is { } hp)
         {
             Console.WriteLine($"Outlook add-in pane: https://localhost:{hp}/taskpane.html · manifest: https://localhost:{hp}/manifest.xml");
@@ -174,16 +175,22 @@ public sealed class UiServer
     // ---------------------------------------------------------------------
 
     /// <summary>Value of <c>app</c> in the <c>GET /health</c> answer.</summary>
-    public const string HealthAppName = "jevoutlook";
+    public const string HealthAppName = "mailclassification";
+
+    /// <summary>
+    /// <c>app</c> value answered by builds released as jevOutlook. Still accepted so that an old
+    /// server kept running during the upgrade is recognised as ours rather than a foreign program.
+    /// </summary>
+    public const string LegacyHealthAppName = "jevoutlook";
 
     public static string AppVersion => typeof(UiServer).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
-    public enum HealthState { Free, JevOutlook, Foreign }
+    public enum HealthState { Free, Ours, Foreign }
 
     /// <summary>
     /// Probe <c>http://127.0.0.1:{port}/health</c>. <see cref="HealthState.Free"/>: nothing
-    /// listens; <see cref="HealthState.JevOutlook"/>: a jevOutlook server answers;
-    /// <see cref="HealthState.Foreign"/>: something else (or an older jevOutlook without
+    /// listens; <see cref="HealthState.Ours"/>: a MailClassification server answers;
+    /// <see cref="HealthState.Foreign"/>: something else (or an older build without
     /// <c>/health</c>) holds the port.
     /// </summary>
     public static async Task<(HealthState State, string? Version)> ProbeAsync(HttpClient http, int port, CancellationToken ct)
@@ -195,7 +202,7 @@ public sealed class UiServer
             using var response = await http.GetAsync($"http://127.0.0.1:{port}/health", timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             return response.IsSuccessStatusCode && ParseHealth(body) is { } version
-                ? (HealthState.JevOutlook, version)
+                ? (HealthState.Ours, version)
                 : (HealthState.Foreign, null);
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.ConnectionRefused })
@@ -212,7 +219,7 @@ public sealed class UiServer
         }
     }
 
-    /// <summary>The version from a jevOutlook <c>/health</c> body, or null when the body is anything else.</summary>
+    /// <summary>The version from a MailClassification (or legacy jevOutlook) <c>/health</c> body, or null when the body is anything else.</summary>
     internal static string? ParseHealth(string body)
     {
         try
@@ -220,7 +227,7 @@ public sealed class UiServer
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("app", out var app) || app.ValueKind != JsonValueKind.String || app.GetString() != HealthAppName) return null;
+                !root.TryGetProperty("app", out var app) || app.ValueKind != JsonValueKind.String || app.GetString() is not (HealthAppName or LegacyHealthAppName)) return null;
             return root.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : string.Empty;
         }
         catch (JsonException)
@@ -245,10 +252,10 @@ public sealed class UiServer
                        xsi:type="MailApp">
               <Id>{AddInId}</Id>
               <Version>{AddInVersion}</Version>
-              <ProviderName>jevOutlook</ProviderName>
+              <ProviderName>MailClassification</ProviderName>
               <DefaultLocale>en-US</DefaultLocale>
-              <DisplayName DefaultValue="jevOutlook"/>
-              <Description DefaultValue="AI-assisted classification of Outlook messages with Jev (TypeSafe). Runs against the local jevOutlook server."/>
+              <DisplayName DefaultValue="MailClassification"/>
+              <Description DefaultValue="AI-assisted classification of Outlook messages with Jev (TypeSafe). Runs against the local MailClassification server."/>
               <IconUrl DefaultValue="{b}/icon-64.png"/>
               <HighResolutionIconUrl DefaultValue="{b}/icon-128.png"/>
               <SupportUrl DefaultValue="https://github.com/vincentlauriat/MailClassification.jev"/>
@@ -288,9 +295,9 @@ public sealed class UiServer
                       <FunctionFile resid="Taskpane.Url"/>
                       <ExtensionPoint xsi:type="MessageReadCommandSurface">
                         <OfficeTab id="TabDefault">
-                          <Group id="jevOutlookGroup">
+                          <Group id="MailClassificationGroup">
                             <Label resid="Group.Label"/>
-                            <Control xsi:type="Button" id="jevOutlookOpenPane">
+                            <Control xsi:type="Button" id="MailClassificationOpenPane">
                               <Label resid="Button.Label"/>
                               <Supertip>
                                 <Title resid="Button.Label"/>
@@ -321,7 +328,7 @@ public sealed class UiServer
                     <bt:Url id="Taskpane.Url" DefaultValue="{b}/taskpane.html"/>
                   </bt:Urls>
                   <bt:ShortStrings>
-                    <bt:String id="Group.Label" DefaultValue="jevOutlook"/>
+                    <bt:String id="Group.Label" DefaultValue="MailClassification"/>
                     <bt:String id="Button.Label" DefaultValue="Classify"/>
                   </bt:ShortStrings>
                   <bt:LongStrings>
@@ -639,7 +646,7 @@ public sealed class UiServer
         if (!account.IsGraph) throw new InvalidOperationException("Only Microsoft 365 mailboxes use the Microsoft sign-in.");
         var config = AppConfig.Load();
         if (string.IsNullOrWhiteSpace(config.ClientId))
-            throw new InvalidOperationException("No Entra ID application (client) id is configured. Run: jevoutlook config set client-id <guid>");
+            throw new InvalidOperationException("No Entra ID application (client) id is configured. Run: mailclassification config set client-id <guid>");
 
         lock (_authGate)
         {

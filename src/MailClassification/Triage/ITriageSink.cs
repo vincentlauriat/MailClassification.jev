@@ -1,4 +1,4 @@
-namespace JevOutlook.Triage;
+namespace MailClassification.Triage;
 
 public sealed record ResultRow(string From, string Subject, string Label, string Confidence, string Stage, string Action);
 

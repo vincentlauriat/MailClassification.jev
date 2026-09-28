@@ -1,7 +1,7 @@
 using System.Globalization;
-using JevOutlook.Triage;
+using MailClassification.Triage;
 
-namespace JevOutlook.Cli;
+namespace MailClassification.Cli;
 
 /// <summary>Terminal renderer: timestamped events, a results table and a progress line per batch.</summary>
 public sealed class ConsoleSink : ITriageSink

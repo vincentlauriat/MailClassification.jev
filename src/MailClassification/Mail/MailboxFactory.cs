@@ -1,9 +1,9 @@
 using Azure.Identity;
-using JevOutlook.Graph;
-using JevOutlook.Imap;
-using JevOutlook.Storage;
+using MailClassification.Graph;
+using MailClassification.Imap;
+using MailClassification.Storage;
 
-namespace JevOutlook.Mail;
+namespace MailClassification.Mail;
 
 /// <summary>Builds the right <see cref="IMailbox"/> for a configured account.</summary>
 public static class MailboxFactory
@@ -17,7 +17,7 @@ public static class MailboxFactory
         if (account.IsGraph)
         {
             var record = await GraphTokenProvider.LoadRecordAsync(account.Id, ct)
-                ?? throw new InvalidOperationException($"Account '{account.Id}' is not signed in to Microsoft. Run: jevoutlook account login {account.Id}");
+                ?? throw new InvalidOperationException($"Account '{account.Id}' is not signed in to Microsoft. Run: mailclassification account login {account.Id}");
             return new GraphMailClient(http, new GraphTokenProvider(config, account, record, config.DeviceCode));
         }
         if (account.IsImap)

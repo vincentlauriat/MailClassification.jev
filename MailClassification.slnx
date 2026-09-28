@@ -1,8 +1,8 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/JevOutlook/JevOutlook.csproj" />
+    <Project Path="src/MailClassification/MailClassification.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/JevOutlook.Tests/JevOutlook.Tests.csproj" />
+    <Project Path="tests/MailClassification.Tests/MailClassification.Tests.csproj" />
   </Folder>
 </Solution>

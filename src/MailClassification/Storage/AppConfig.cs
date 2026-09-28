@@ -1,4 +1,4 @@
-namespace JevOutlook.Storage;
+namespace MailClassification.Storage;
 
 /// <summary>
 /// Persistent configuration: the Entra ID app registration used to sign in,
@@ -42,7 +42,7 @@ public sealed class AppConfig
         if (key.Length == 0) key = (ApiKey ?? string.Empty).Trim();
         if (key.Length == 0)
             throw new InvalidOperationException(
-                $"Enter an API key for {ProviderLabel} (jevoutlook key set <key>) or export OPENROUTER_API_KEY / JEV_API_KEY.");
+                $"Enter an API key for {ProviderLabel} (mailclassification key set <key>) or export OPENROUTER_API_KEY / JEV_API_KEY.");
         return key;
     }
 }

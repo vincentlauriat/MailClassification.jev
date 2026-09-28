@@ -2,35 +2,47 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
-using JevOutlook.Storage;
-using JevOutlook.Web;
+using MailClassification.Storage;
+using MailClassification.Web;
 
-namespace JevOutlook.Cli;
+namespace MailClassification.Cli;
 
 /// <summary>
-/// <c>jevoutlook service</c>: a macOS LaunchAgent that keeps <c>ui --no-open</c> running
+/// <c>mailclassification service</c>: a macOS LaunchAgent that keeps <c>ui --no-open</c> running
 /// from login onward, so the Outlook add-in pane (served by that process) always loads.
 /// launchctl is always called with an argument list, never through a shell.
 /// </summary>
 internal static class ServiceCommand
 {
-    public const string Label = "com.vincentlauriat.jevoutlook";
+    public const string Label = "com.vincentlauriat.mailclassification";
+
+    /// <summary>Label of the agent installed by jevOutlook builds; replaced by <c>service install</c>.</summary>
+    public const string LegacyLabel = "com.vincentlauriat.jevoutlook";
 
     /// <summary>
     /// The only variables copied from the installing shell into the plist. API keys
     /// (OPENROUTER_API_KEY, JEV_API_KEY) never go there: the plist is plaintext.
     /// </summary>
-    public static readonly IReadOnlyList<string> AllowedEnvironment = ["DOTNET_ROOT", "JEVOUTLOOK_HOME"];
+    public static readonly IReadOnlyList<string> AllowedEnvironment = ["DOTNET_ROOT", AppPaths.HomeVariable, AppPaths.LegacyHomeVariable];
 
-    public static string PlistPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "LaunchAgents", Label + ".plist");
+    public static string LaunchAgentsDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "LaunchAgents");
+
+    public static string PlistPath => Path.Combine(LaunchAgentsDir, Label + ".plist");
+
+    /// <summary>The jevOutlook-era plist in <paramref name="launchAgentsDir"/>, or null when there is none.</summary>
+    internal static string? LegacyPlistIn(string launchAgentsDir)
+    {
+        var path = Path.Combine(launchAgentsDir, LegacyLabel + ".plist");
+        return File.Exists(path) ? path : null;
+    }
 
     public static string LogPath => Path.Combine(AppPaths.Root, "logs", "ui.log");
 
     public static async Task<int> RunAsync(string[] args, HttpClient http, CancellationToken ct)
     {
         if (!OperatingSystem.IsMacOS())
-            throw new PlatformNotSupportedException("'jevoutlook service' manages a macOS LaunchAgent. On other systems, run 'jevoutlook ui --no-open' from your own service manager.");
+            throw new PlatformNotSupportedException("'mailclassification service' manages a macOS LaunchAgent. On other systems, run 'mailclassification ui --no-open' from your own service manager.");
         var sub = args.Length > 0 ? args[0].ToLowerInvariant() : "status";
         return sub switch
         {
@@ -38,7 +50,7 @@ internal static class ServiceCommand
             "uninstall" or "remove" => Uninstall(),
             "status" => await StatusAsync(args, http, ct),
             "restart" => Restart(),
-            _ => throw new ArgumentException("Usage: jevoutlook service install [--port 5177] [--https-port 5178] [--exe <path>] | status | restart | uninstall"),
+            _ => throw new ArgumentException("Usage: mailclassification service install [--port 5177] [--https-port 5178] [--exe <path>] | status | restart | uninstall"),
         };
     }
 
@@ -53,15 +65,15 @@ internal static class ServiceCommand
         if (port is < 1 or > 65535 || httpsPort is < 1 or > 65535) throw new ArgumentException("Ports must be between 1 and 65535.");
 
         var exe = Path.GetFullPath(Program.Option(args, "--exe") ?? Environment.ProcessPath
-            ?? throw new InvalidOperationException("Cannot determine the jevoutlook executable; pass --exe <path>."));
+            ?? throw new InvalidOperationException("Cannot determine the mailclassification executable; pass --exe <path>."));
         if (Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Running through the 'dotnet' host: pass the jevoutlook executable with --exe <path>.");
+            throw new ArgumentException("Running through the 'dotnet' host: pass the mailclassification executable with --exe <path>.");
         if (!File.Exists(exe)) throw new FileNotFoundException($"Executable not found: {exe}");
         if (exe.Contains("/bin/Debug/", StringComparison.Ordinal) || exe.Contains("/bin/Release/", StringComparison.Ordinal))
         {
             Console.Error.WriteLine($"Warning: {exe} is a build output; the next build or 'dotnet clean' will replace or remove it under the agent. Prefer a published copy:");
-            Console.Error.WriteLine("  dotnet publish src/JevOutlook -c Release -o ~/.jevoutlook/bin");
-            Console.Error.WriteLine("  ~/.jevoutlook/bin/jevoutlook service install --exe ~/.jevoutlook/bin/jevoutlook");
+            Console.Error.WriteLine("  dotnet publish src/MailClassification -c Release -o ~/.mailclassification/bin");
+            Console.Error.WriteLine("  ~/.mailclassification/bin/mailclassification service install --exe ~/.mailclassification/bin/mailclassification");
         }
 
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -74,7 +86,7 @@ internal static class ServiceCommand
         if (!env.ContainsKey("DOTNET_ROOT") && !File.Exists("/usr/local/share/dotnet/dotnet") && !File.Exists("/etc/dotnet/install_location"))
             Console.Error.WriteLine("Warning: DOTNET_ROOT is not set and .NET is not in /usr/local/share/dotnet; the agent may not find the runtime. Export DOTNET_ROOT and install again.");
         if (Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") is { Length: > 0 } || Environment.GetEnvironmentVariable("JEV_API_KEY") is { Length: > 0 })
-            Console.Error.WriteLine("Note: the API key from your environment is NOT copied into the agent (the plist is plaintext). Store it with: jevoutlook key set <api-key>");
+            Console.Error.WriteLine("Note: the API key from your environment is NOT copied into the agent (the plist is plaintext). Store it with: mailclassification key set <api-key>");
 
         Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
         Directory.CreateDirectory(Path.GetDirectoryName(PlistPath)!);
@@ -82,7 +94,15 @@ internal static class ServiceCommand
         File.WriteAllText(PlistPath, BuildLaunchAgentPlist(exe, programArgs, env, LogPath), new UTF8Encoding(false));
 
         var domain = Domain();
-        if (IsLoaded(domain)) Launchctl("bootout", $"{domain}/{Label}");
+        // The jevOutlook agent holds the same port: stop and remove it before bootstrapping, and
+        // before the /health probe below (which also accepts the legacy server's answer).
+        var legacyLoaded = IsLoaded(domain, LegacyLabel);
+        var legacyPlist = LegacyPlistIn(LaunchAgentsDir);
+        if (legacyLoaded) Launchctl("bootout", $"{domain}/{LegacyLabel}");
+        if (legacyPlist is not null) File.Delete(legacyPlist);
+        if (legacyLoaded || legacyPlist is not null)
+            Console.WriteLine($"Removed the previous jevOutlook LaunchAgent ({LegacyLabel}).");
+        if (IsLoaded(domain, Label)) Launchctl("bootout", $"{domain}/{Label}");
         // bootout returns before launchd has fully released the job; retry briefly.
         var (code, output) = (0, string.Empty);
         for (var attempt = 0; attempt < 5; attempt++)
@@ -97,24 +117,24 @@ internal static class ServiceCommand
         Console.WriteLine($"  runs  : {exe} {string.Join(' ', programArgs)}");
         Console.WriteLine($"  log   : {LogPath}");
         var state = UiServer.HealthState.Free;
-        for (var i = 0; i < 20 && state != UiServer.HealthState.JevOutlook; i++)
+        for (var i = 0; i < 20 && state != UiServer.HealthState.Ours; i++)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
             state = (await UiServer.ProbeAsync(http, port, ct)).State;
         }
-        if (state == UiServer.HealthState.JevOutlook)
-            Console.WriteLine($"jevOutlook is up: http://127.0.0.1:{port}/ · add-in pane https://localhost:{httpsPort}/taskpane.html");
+        if (state == UiServer.HealthState.Ours)
+            Console.WriteLine($"MailClassification is up: http://127.0.0.1:{port}/ · add-in pane https://localhost:{httpsPort}/taskpane.html");
         else if (state == UiServer.HealthState.Foreign)
-            Console.WriteLine($"Port {port} is held by another program or an older jevOutlook build: stop it; the agent retries every 30 s. See {LogPath}.");
+            Console.WriteLine($"Port {port} is held by another program or an older build without /health: stop it; the agent retries every 30 s. See {LogPath}.");
         else
-            Console.WriteLine($"The agent is loaded but /health does not answer yet. Check 'jevoutlook service status' and {LogPath}.");
+            Console.WriteLine($"The agent is loaded but /health does not answer yet. Check 'mailclassification service status' and {LogPath}.");
         return 0;
     }
 
     private static int Uninstall()
     {
         var domain = Domain();
-        var loaded = IsLoaded(domain);
+        var loaded = IsLoaded(domain, Label);
         if (loaded)
         {
             var (code, output) = Launchctl("bootout", $"{domain}/{Label}");
@@ -123,6 +143,7 @@ internal static class ServiceCommand
         var existed = File.Exists(PlistPath);
         if (existed) File.Delete(PlistPath);
         Console.WriteLine(loaded || existed ? "LaunchAgent stopped and removed." : "No LaunchAgent was installed.");
+        ReportLegacyAgent(domain);
         return 0;
     }
 
@@ -130,24 +151,26 @@ internal static class ServiceCommand
     {
         var port = (int)Program.Number(args, "--port", 5177);
         var installed = File.Exists(PlistPath);
-        var loaded = IsLoaded(Domain());
+        var domain = Domain();
+        var loaded = IsLoaded(domain, Label);
         var (state, version) = await UiServer.ProbeAsync(http, port, ct);
-        Console.WriteLine($"Plist   : {(installed ? PlistPath : "not installed (jevoutlook service install)")}");
+        Console.WriteLine($"Plist   : {(installed ? PlistPath : "not installed (mailclassification service install)")}");
         Console.WriteLine($"Agent   : {(loaded ? "loaded" : "not loaded")} ({Label})");
         Console.WriteLine($"Health  : {state switch
         {
-            UiServer.HealthState.JevOutlook => $"jevOutlook {version} answers on http://127.0.0.1:{port}/",
-            UiServer.HealthState.Foreign => $"port {port} is held by another program (or an older jevOutlook)",
+            UiServer.HealthState.Ours => $"MailClassification {version} answers on http://127.0.0.1:{port}/",
+            UiServer.HealthState.Foreign => $"port {port} is held by another program (or an older build without /health)",
             _ => $"nothing listens on port {port}",
         }}");
         Console.WriteLine($"Log     : {LogPath}");
-        return state == UiServer.HealthState.JevOutlook ? 0 : 1;
+        ReportLegacyAgent(domain);
+        return state == UiServer.HealthState.Ours ? 0 : 1;
     }
 
     private static int Restart()
     {
         var (code, output) = Launchctl("kickstart", "-k", $"{Domain()}/{Label}");
-        if (code != 0) throw new InvalidOperationException($"launchctl kickstart failed ({code}): {output.Trim()} — is the agent installed? Run 'jevoutlook service install'.");
+        if (code != 0) throw new InvalidOperationException($"launchctl kickstart failed ({code}): {output.Trim()} — is the agent installed? Run 'mailclassification service install'.");
         Console.WriteLine("LaunchAgent restarted.");
         return 0;
     }
@@ -198,7 +221,16 @@ internal static class ServiceCommand
             : throw new InvalidOperationException("Cannot determine the user id ('id -u' failed).");
     }
 
-    private static bool IsLoaded(string domain) => Launchctl("print", $"{domain}/{Label}").Code == 0;
+    private static bool IsLoaded(string domain, string label) => Launchctl("print", $"{domain}/{label}").Code == 0;
+
+    /// <summary>Mention a leftover jevOutlook agent (it is removed by <c>service install</c>).</summary>
+    private static void ReportLegacyAgent(string domain)
+    {
+        var plist = LegacyPlistIn(LaunchAgentsDir);
+        var loaded = IsLoaded(domain, LegacyLabel);
+        if (plist is null && !loaded) return;
+        Console.WriteLine($"Legacy  : the jevOutlook agent {LegacyLabel} is still {(loaded ? "loaded" : "installed")}{(plist is not null ? $" ({plist})" : string.Empty)}. 'mailclassification service install' replaces it; to only remove it: launchctl bootout {domain}/{LegacyLabel}, then delete its plist.");
+    }
 
     private static (int Code, string Output) Launchctl(params string[] args) => Run("/bin/launchctl", args);
 

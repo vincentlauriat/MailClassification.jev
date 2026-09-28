@@ -1,10 +1,10 @@
-using JevOutlook;
-using JevOutlook.Graph;
-using JevOutlook.Mail;
-using JevOutlook.Storage;
-using JevOutlook.Triage;
+using MailClassification;
+using MailClassification.Graph;
+using MailClassification.Mail;
+using MailClassification.Storage;
+using MailClassification.Triage;
 
-namespace JevOutlook.Tests;
+namespace MailClassification.Tests;
 
 public class GraphAndOptionsTests
 {

@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
-using JevOutlook.Mail;
-using JevOutlook.Jev;
-using JevOutlook.Rules;
-using JevOutlook.Storage;
+using MailClassification.Mail;
+using MailClassification.Jev;
+using MailClassification.Rules;
+using MailClassification.Storage;
 
-namespace JevOutlook.Triage;
+namespace MailClassification.Triage;
 
 /// <summary>
 /// Two-stage, confidence-aware classification of mailbox messages (Outlook, Gmail or IMAP):
@@ -56,7 +56,7 @@ public sealed class TriageEngine
         var existing = _store.Load();
         if (existing is { Status: JobStatus.Running })
         {
-            throw new InvalidOperationException("A processing session is already active. Stop or continue it before starting another (jevoutlook status).");
+            throw new InvalidOperationException("A processing session is already active. Stop or continue it before starting another (mailclassification status).");
         }
 
         var normalizedRules = RuleStore.Save(rules);
@@ -117,14 +117,14 @@ public sealed class TriageEngine
 
     public TriageJob Resume(double? newMaxSpend)
     {
-        var job = _store.Load() ?? throw new InvalidOperationException("There is no processing session to continue. Start one with: jevoutlook run");
+        var job = _store.Load() ?? throw new InvalidOperationException("There is no processing session to continue. Start one with: mailclassification run");
         if (job.Status is JobStatus.Completed or JobStatus.Cancelled)
             throw new InvalidOperationException("This processing session is already finished. Start a new session to continue.");
         if (job.Status == JobStatus.Budget)
         {
             if (newMaxSpend is null || newMaxSpend <= job.MaxSpendUsd)
                 throw new InvalidOperationException(
-                    $"This processing session reached its cost limit (${job.MaxSpendUsd:0.00}). Continue with a higher limit: jevoutlook continue --max-spend <usd>");
+                    $"This processing session reached its cost limit (${job.MaxSpendUsd:0.00}). Continue with a higher limit: mailclassification continue --max-spend <usd>");
         }
         if (newMaxSpend is { } spend)
         {
@@ -174,7 +174,7 @@ public sealed class TriageEngine
                 }
                 CloseTiming(job);
                 _store.Save(job);
-                _sink.Event("warn", "Processing stopped. All decisions are checkpointed; run 'jevoutlook continue' to resume.");
+                _sink.Event("warn", "Processing stopped. All decisions are checkpointed; run 'mailclassification continue' to resume.");
                 return;
             }
             _sink.BatchCompleted(job);
@@ -545,7 +545,7 @@ public sealed class TriageEngine
             job.Status = JobStatus.Paused;
             job.StopReason = "scan-guard";
             job.LastError = $"Scanned {MaxScanPagesPerBatch} pages of already-processed messages without finding a new one.";
-            _sink.Event("warn", job.LastError + " Run 'jevoutlook continue' to keep scanning older mail, or start a new session with a narrower scope.");
+            _sink.Event("warn", job.LastError + " Run 'mailclassification continue' to keep scanning older mail, or start a new session with a narrower scope.");
         }
     }
 
@@ -642,7 +642,7 @@ public sealed class TriageEngine
                 var part = parts[i];
                 if (part.Ok) { output.Messages[entries[i].Id] = part; continue; }
                 if (part.NotFound) { output.UnavailableIds.Add(entries[i].Id); continue; }
-                if (part.AuthFailure) throw new InvalidOperationException($"{Provider} authorization failed while reading messages. Sign in again (jevoutlook account login) and try again.");
+                if (part.AuthFailure) throw new InvalidOperationException($"{Provider} authorization failed while reading messages. Sign in again (mailclassification account login) and try again.");
                 if (!part.Retryable) throw new InvalidOperationException(part.Error.Length > 0 ? part.Error : $"{Provider} rejected a message read.");
                 adaptiveFailure = true;
                 retryAfterMs = Math.Max(retryAfterMs, part.RetryAfterMs);
@@ -866,7 +866,7 @@ public sealed class TriageEngine
             job.Status = JobStatus.Paused;
             job.StopReason = "provider-temporary";
             job.LastError = parsed.Error;
-            _sink.Event("warn", parsed.Error + " Processing is paused; run 'jevoutlook continue' to try again later.");
+            _sink.Event("warn", parsed.Error + " Processing is paused; run 'mailclassification continue' to try again later.");
             return;
         }
 

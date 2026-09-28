@@ -1,4 +1,4 @@
-namespace JevOutlook.Mail;
+namespace MailClassification.Mail;
 
 /// <summary>One message as seen by the listing pass (cheap: no headers).</summary>
 /// <param name="Id">Provider-specific stable id, opaque to the engine.</param>

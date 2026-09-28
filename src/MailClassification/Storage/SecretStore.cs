@@ -1,16 +1,18 @@
 using System.Diagnostics;
 
-namespace JevOutlook.Storage;
+namespace MailClassification.Storage;
 
 /// <summary>
 /// Mailbox passwords. On macOS they live in the login Keychain (service
-/// <c>jevoutlook</c>, account = the account id) through the <c>security</c>
+/// <c>mailclassification</c>, account = the account id) through the <c>security</c>
 /// tool, so nothing secret is written next to the configuration. Elsewhere a
-/// <c>secrets.json</c> file with mode 0600 is used.
+/// <c>secrets.json</c> file with mode 0600 is used (it moves with the state directory).
+/// Items stored under the pre-rename service <c>jevoutlook</c> are migrated on first read.
 /// </summary>
 public static class SecretStore
 {
-    private const string Service = "jevoutlook";
+    private const string Service = "mailclassification";
+    private const string LegacyService = "jevoutlook";
 
     public static string Backend => OperatingSystem.IsMacOS() ? "macOS Keychain" : AppPaths.Secrets;
 
@@ -32,25 +34,56 @@ public static class SecretStore
     {
         if (OperatingSystem.IsMacOS())
         {
-            var (code, output) = Run(["find-generic-password", "-s", Service, "-a", accountId, "-w"], throwOnError: false);
-            return code == 0 ? output.TrimEnd('\n', '\r') : null;
+            return GetWithLegacyFallback(
+                service => Find(service, accountId),
+                secret => Set(accountId, secret),
+                () => Run(["delete-generic-password", "-s", LegacyService, "-a", accountId], throwOnError: false));
         }
         return LoadFile().GetValueOrDefault(accountId);
     }
 
     public static string Require(string accountId) =>
         Get(accountId) ?? throw new InvalidOperationException(
-            $"No password is stored for account '{accountId}'. Set one with: jevoutlook account password {accountId}");
+            $"No password is stored for account '{accountId}'. Set one with: mailclassification account password {accountId}");
 
     public static void Delete(string accountId)
     {
         if (OperatingSystem.IsMacOS())
         {
             Run(["delete-generic-password", "-s", Service, "-a", accountId], throwOnError: false);
+            Run(["delete-generic-password", "-s", LegacyService, "-a", accountId], throwOnError: false); // never migrated
             return;
         }
         var all = LoadFile();
         if (all.Remove(accountId)) JsonStore.Save(AppPaths.Secrets, all);
+    }
+
+    /// <summary>
+    /// Read under the current service; on a miss, read the legacy item and, when found, store it
+    /// under the current service and delete the legacy one. The legacy item is only deleted
+    /// after the new one was written; if the write fails the legacy value is still returned
+    /// and the migration is retried on the next read.
+    /// </summary>
+    internal static string? GetWithLegacyFallback(Func<string, string?> find, Action<string> store, Action deleteLegacy)
+    {
+        if (find(Service) is { } current) return current;
+        if (find(LegacyService) is not { } legacy) return null;
+        try
+        {
+            store(legacy);
+        }
+        catch (InvalidOperationException)
+        {
+            return legacy;
+        }
+        deleteLegacy();
+        return legacy;
+    }
+
+    private static string? Find(string service, string accountId)
+    {
+        var (code, output) = Run(["find-generic-password", "-s", service, "-a", accountId, "-w"], throwOnError: false);
+        return code == 0 ? output.TrimEnd('\n', '\r') : null;
     }
 
     public static bool Has(string accountId) => Get(accountId) is { Length: > 0 };

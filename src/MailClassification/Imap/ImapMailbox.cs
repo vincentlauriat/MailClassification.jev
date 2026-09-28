@@ -1,12 +1,12 @@
 using System.Net.Sockets;
-using JevOutlook.Mail;
-using JevOutlook.Storage;
+using MailClassification.Mail;
+using MailClassification.Storage;
 using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
 
-namespace JevOutlook.Imap;
+namespace MailClassification.Imap;
 
 /// <summary>
 /// IMAP implementation of <see cref="IMailbox"/> over MailKit.
@@ -118,7 +118,7 @@ public sealed class ImapMailbox : IMailbox, IDisposable, IAsyncDisposable
     {
         MailboxException m => m,
         AuthenticationException => new MailboxException(false,
-            $"{Provider} rejected the password for {_account.Email}. Store a new one with: jevoutlook account password {_account.Id}"),
+            $"{Provider} rejected the password for {_account.Email}. Store a new one with: mailclassification account password {_account.Id}"),
         ImapCommandException c => new MailboxException(false, $"{Provider} refused a command ({c.Response}): {Clip(c.ResponseText.Length > 0 ? c.ResponseText : c.Message)}"),
         ImapProtocolException or IOException or SocketException or TimeoutException or ServiceNotConnectedException or ServiceNotAuthenticatedException =>
             new MailboxException(true, $"{Provider} connection problem with {_account.Host}: {Clip(ex.Message)}"),
@@ -423,7 +423,7 @@ public sealed class ImapMailbox : IMailbox, IDisposable, IAsyncDisposable
             _keywordsSupported = inbox.PermanentFlags.HasFlag(MessageFlags.UserDefined);
         }
         if (!_keywordsSupported)
-            throw new MailboxException(false, "This IMAP server does not accept custom keywords; jevOutlook cannot label messages here.");
+            throw new MailboxException(false, "This IMAP server does not accept custom keywords; MailClassification cannot label messages here.");
     }
 
     public async Task<WriteOutcome> ApplyLabelsAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Labels)> updates, CancellationToken ct)

@@ -2,9 +2,9 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using JevOutlook.Rules;
+using MailClassification.Rules;
 
-namespace JevOutlook.Jev;
+namespace MailClassification.Jev;
 
 /// <summary>
 /// Sends independent Decisions requests (one per email) and validates the

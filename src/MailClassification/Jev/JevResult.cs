@@ -1,4 +1,4 @@
-namespace JevOutlook.Jev;
+namespace MailClassification.Jev;
 
 /// <summary>
 /// Outcome of one Decisions request. Failures carry a scope: <c>message</c>

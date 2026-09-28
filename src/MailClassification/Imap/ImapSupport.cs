@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Text;
-using JevOutlook.Mail;
+using MailClassification.Mail;
 using MailKit;
 using MimeKit;
 
-namespace JevOutlook.Imap;
+namespace MailClassification.Imap;
 
 /// <summary>
 /// Pure helpers behind <see cref="ImapMailbox"/>: cursor / id encoding, keyword
@@ -59,7 +59,7 @@ public static class ImapSupport
     /// Keyword names that mail clients and servers give a meaning to. Thunderbird, Apple Mail
     /// and server-side antispam learners read <c>Junk</c> / <c>$Junk</c> / <c>NonJunk</c> /
     /// <c>$NotJunk</c> as the junk verdict (keywords compare case-insensitively), and
-    /// <c>$Forwarded</c>, <c>$MDNSent</c>, <c>$Phishing</c>… as message state. jevOutlook never
+    /// <c>$Forwarded</c>, <c>$MDNSent</c>, <c>$Phishing</c>… as message state. MailClassification never
     /// marks mail as junk or changes such state, so a rule with one of these names is stored under
     /// <see cref="ReservedKeywordPrefix"/> instead. Every name starting with '$' (the IANA keyword
     /// registry's system-like range: $Label1..5, $Important, $Submitted…) is reserved as well.

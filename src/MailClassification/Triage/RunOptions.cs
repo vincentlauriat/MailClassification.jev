@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace JevOutlook.Triage;
+namespace MailClassification.Triage;
 
 /// <summary>Validated run configuration (the counterpart of the jevMail run form).</summary>
 public sealed record RunOptions(

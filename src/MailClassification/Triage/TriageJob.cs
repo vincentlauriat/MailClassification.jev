@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace JevOutlook.Triage;
+namespace MailClassification.Triage;
 
 public static class JobStatus
 {

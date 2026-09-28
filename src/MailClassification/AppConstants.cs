@@ -1,4 +1,4 @@
-namespace JevOutlook;
+namespace MailClassification;
 
 /// <summary>
 /// Tunables shared by the whole application. Values mirror the jevMail (Gmail)
@@ -6,7 +6,7 @@ namespace JevOutlook;
 /// </summary>
 public static class AppConstants
 {
-    public const string AppName = "jevOutlook";
+    public const string AppName = "MailClassification";
 
     // ----- Model providers ------------------------------------------------
 

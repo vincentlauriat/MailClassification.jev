@@ -6,8 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>jevoutlook</AssemblyName>
-    <RootNamespace>JevOutlook</RootNamespace>
+    <AssemblyName>mailclassification</AssemblyName>
+    <RootNamespace>MailClassification</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
     <RollForward>Major</RollForward>
     <Version>0.1.0</Version>
@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="JevOutlook.Tests" />
+    <InternalsVisibleTo Include="MailClassification.Tests" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-namespace JevOutlook.Rules;
+namespace MailClassification.Rules;
 
 /// <summary>
 /// Ready-to-adapt category sets. The first playbook is the default rule set.
