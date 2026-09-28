@@ -1,5 +1,7 @@
 using JevOutlook;
 using JevOutlook.Graph;
+using JevOutlook.Mail;
+using JevOutlook.Storage;
 using JevOutlook.Triage;
 
 namespace JevOutlook.Tests;
@@ -13,6 +15,30 @@ public class GraphAndOptionsTests
         Assert.Equal("receivedDateTime le 2026-09-22T10:30:15.0000000Z", GraphMailClient.BuildFilter(false, cursor));
         Assert.Equal("receivedDateTime le 2026-09-22T10:30:15.0000000Z and isRead eq false", GraphMailClient.BuildFilter(true, cursor));
         Assert.Equal("receivedDateTime lt 2026-09-22T10:30:15.0000000Z", GraphMailClient.BuildFilter(false, cursor, exclusive: true));
+    }
+
+    [Fact]
+    public void Mailboxes_are_async_disposable_so_one_shot_connections_are_closed()
+    {
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IMailbox)));
+    }
+
+    private sealed class OkHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+    }
+
+    [Fact]
+    public async Task Disposing_a_graph_mailbox_keeps_the_shared_http_client()
+    {
+        using var http = new HttpClient(new OkHandler());
+        var account = new MailAccount { Id = "m", Email = "m@contoso.com", Kind = AccountKind.Graph };
+        var config = new AppConfig { ClientId = "00000000-0000-0000-0000-000000000001" };
+        object mailbox = new GraphMailClient(http, new GraphTokenProvider(config, account, null, deviceCode: true));
+        await ((IAsyncDisposable)mailbox).DisposeAsync();
+        using var response = await http.GetAsync("http://127.0.0.1/still-usable");
+        Assert.True(response.IsSuccessStatusCode);
     }
 
     [Fact]

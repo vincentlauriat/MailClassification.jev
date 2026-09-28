@@ -386,6 +386,9 @@ public sealed class ImapMailbox : IMailbox, IDisposable, IAsyncDisposable
         return output;
     }
 
+    /// <summary>Gmail: the label named after the rule. Generic IMAP: the rule's keyword (<see cref="ImapSupport.ToKeyword"/>).</summary>
+    public string StoredLabel(string ruleName) => Gmail ? ruleName : ImapSupport.ToKeyword(ruleName);
+
     public Task<Dictionary<string, string>> EnsureLabelsAsync(IReadOnlyList<string> names, CancellationToken ct) =>
         WithClientAsync(async client =>
         {
@@ -408,7 +411,7 @@ public sealed class ImapMailbox : IMailbox, IDisposable, IAsyncDisposable
             }
 
             await RequireKeywordsAsync(client, ct);
-            foreach (var name in names) result[name.ToLowerInvariant()] = ImapSupport.ToKeyword(name);
+            foreach (var name in names) result[name.ToLowerInvariant()] = StoredLabel(name);
             return result;
         }, ct);
 
@@ -443,19 +446,13 @@ public sealed class ImapMailbox : IMailbox, IDisposable, IAsyncDisposable
                     foreach (var (index, uid) in group.Value)
                     {
                         if (!current.TryGetValue(uid, out var summary)) continue; // vanished meanwhile: nothing to do
-                        var desired = Gmail ? updates[index].Labels : updates[index].Labels.Select(ImapSupport.ToKeyword).ToList();
-                        var (add, remove) = ImapSupport.Diff(LabelsOf(summary), desired);
+                        // Add-only (STORE +X-GM-LABELS / +FLAGS): never remove a label here, it may have been
+                        // set by a filter or another client after the engine's re-read.
+                        var add = ImapSupport.LabelsToAdd(LabelsOf(summary), updates[index].Labels);
+                        if (add.Count == 0) continue;
                         var id = new UniqueId(group.Key.Validity, uid);
-                        if (Gmail)
-                        {
-                            if (add.Count > 0) await folder.StoreAsync(id, new StoreLabelsRequest(StoreAction.Add, add) { Silent = true }, ct);
-                            if (remove.Count > 0) await folder.StoreAsync(id, new StoreLabelsRequest(StoreAction.Remove, remove) { Silent = true }, ct);
-                        }
-                        else
-                        {
-                            if (add.Count > 0) await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Add, MessageFlags.None, add) { Silent = true }, ct);
-                            if (remove.Count > 0) await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Remove, MessageFlags.None, remove) { Silent = true }, ct);
-                        }
+                        if (Gmail) await folder.StoreAsync(id, new StoreLabelsRequest(StoreAction.Add, add) { Silent = true }, ct);
+                        else await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Add, MessageFlags.None, add) { Silent = true }, ct);
                     }
                 }
                 return null;
@@ -527,6 +524,38 @@ public sealed class ImapMailbox : IMailbox, IDisposable, IAsyncDisposable
             index++;
         }
         return groups;
+    }
+
+    public async Task<WriteOutcome> RemoveLabelAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Labels)> messages, string label, CancellationToken ct)
+    {
+        if (messages.Count == 0) return WriteOutcome.Success;
+        try
+        {
+            await WithClientAsync<object?>(async client =>
+            {
+                // The stored form (same mapping as FindMessagesWithLabelAsync) plus every spelling actually found
+                // on the messages that matches it case-insensitively, so a case difference cannot leave it in place.
+                var target = Gmail ? label : ImapSupport.ToKeyword(label);
+                var spellings = messages.SelectMany(m => m.Labels)
+                    .Where(l => string.Equals(l, target, StringComparison.OrdinalIgnoreCase))
+                    .Append(target).Distinct(StringComparer.Ordinal).ToList();
+                foreach (var group in GroupIds(messages.Select(m => m.Id)))
+                {
+                    var folder = await FolderAsync(client, group.Key.Scope, FolderAccess.ReadWrite, ct);
+                    CheckValidity(folder, group.Key.Validity);
+                    var uids = group.Value.Select(g => new UniqueId(group.Key.Validity, g.Uid)).ToList();
+                    // Removing a label a message does not carry is a no-op; a vanished UID is ignored by STORE.
+                    if (Gmail) await folder.StoreAsync(uids, new StoreLabelsRequest(StoreAction.Remove, spellings) { Silent = true }, ct);
+                    else await folder.StoreAsync(uids, new StoreFlagsRequest(StoreAction.Remove, MessageFlags.None, spellings) { Silent = true }, ct);
+                }
+                return null;
+            }, ct);
+            return WriteOutcome.Success;
+        }
+        catch (MailboxException ex)
+        {
+            return new WriteOutcome(false, ex.IsTransient, ex.Message);
+        }
     }
 
     public Task<List<(string Id, IReadOnlyList<string> Labels)>> FindMessagesWithLabelAsync(string label, int top, CancellationToken ct) =>

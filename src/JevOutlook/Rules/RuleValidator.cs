@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using JevOutlook.Imap;
 
 namespace JevOutlook.Rules;
 
@@ -25,6 +26,8 @@ public static class RuleValidator
             throw new RuleValidationException($"Maximum {AppConstants.MaxRules} classification categories.");
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Rules are shared by every mailbox; on generic IMAP two names must not become the same keyword.
+        var keywords = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var normalized = new List<LabelRule>(list.Count);
 
@@ -47,6 +50,10 @@ public static class RuleValidator
                 throw new RuleValidationException($"Category \"{name}\" must not contain ',' or ';' — Outlook uses them as category separators.");
 
             if (!names.Add(name)) throw new RuleValidationException($"Duplicate category name: {name}");
+            var keyword = ImapSupport.ToKeyword(name);
+            if (keywords.TryGetValue(keyword, out var other))
+                throw new RuleValidationException($"Categories \"{other}\" and \"{name}\" would both be stored as the IMAP keyword \"{keyword}\". Rename one of them.");
+            keywords[keyword] = name;
 
             var id = (rule?.Id ?? string.Empty).Trim();
             if (!IdPattern.IsMatch(id) || ForbiddenIds.Contains(id) || ids.Contains(id))

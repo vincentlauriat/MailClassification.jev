@@ -30,6 +30,7 @@ public static class AppPaths
     public static string AccountAuthRecord(string accountId) => Path.Combine(AccountDir(accountId), "auth-record.json");
     public static string AccountJob(string accountId) => Path.Combine(AccountDir(accountId), "job.json");
     public static string AccountJobRules(string accountId) => Path.Combine(AccountDir(accountId), "job-rules.json");
+    public static string AccountJobLock(string accountId) => Path.Combine(AccountDir(accountId), "job.lock");
 
     // Pre-multi-account layout (single Microsoft mailbox), migrated on first start.
     public static string LegacyJob => Path.Combine(Root, "job.json");

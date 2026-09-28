@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -390,9 +391,9 @@ public sealed class UiServer
                 "getUiState" => GetUiState(),
                 "authStatus" => await AuthStatusAsync(Str(args, 0), context.RequestAborted),
                 "startSignIn" => await StartSignInAsync(Str(args, 0)),
-                "signOut" => SignOut(Str(args, 0)),
+                "signOut" => await WithJobLockAsync(() => SignOutAsync(Str(args, 0))),
                 "addAccount" => await WithJobLockAsync(() => AddAccountAsync(args.Length > 0 ? args[0] : default, context.RequestAborted)),
-                "removeAccount" => await WithJobLockAsync(() => Task.FromResult<object?>(RemoveAccount(Str(args, 0)))),
+                "removeAccount" => await WithJobLockAsync(() => RemoveAccountAsync(Str(args, 0))),
                 "testAccount" => await TestAccountAsync(Str(args, 0), context.RequestAborted),
                 "testOpenRouterKey" => await TestKeyAsync(Str(args, 0), Bool(args, 1), context.RequestAborted),
                 "clearSavedOpenRouterKey" => ClearKey(),
@@ -570,7 +571,7 @@ public sealed class UiServer
         var password = Prop(o, "password") ?? string.Empty;
         if (password.Length == 0) throw new ArgumentException(account.Gmail ? "Enter the Gmail app password." : "Enter the mailbox password.");
         // Verify before persisting anything: a wrong password must not leave a half-configured account.
-        var probe = new Imap.ImapMailbox(account, password);
+        await using var probe = new Imap.ImapMailbox(account, password);
         var identity = await probe.GetIdentityAsync(ct);
         await probe.ConnectAsync(ct);
         AccountStore.Add(account);
@@ -578,12 +579,12 @@ public sealed class UiServer
         return new { ok = true, account = AccountDto(account), identity };
     }
 
-    private object RemoveAccount(string accountId)
+    private async Task<object?> RemoveAccountAsync(string accountId)
     {
         var account = AccountStore.Require(accountId);
         var job = new JobStore(account.Id).Load();
         if (job is { Status: JobStatus.Running }) throw new InvalidOperationException("Stop processing on this mailbox before removing it.");
-        _engines.Remove(account.Id);
+        await EvictEngineAsync(account.Id);
         AccountStore.Remove(account.Id);
         return new { ok = true, accounts = AccountStore.Load().Select(AccountDto).ToList() };
     }
@@ -591,7 +592,7 @@ public sealed class UiServer
     private async Task<object?> TestAccountAsync(string accountId, CancellationToken ct)
     {
         var account = Account(accountId);
-        var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), _http, ct);
+        await using var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), _http, ct);
         var identity = await mailbox.GetIdentityAsync(ct);
         var caps = await mailbox.ConnectAsync(ct);
         var unread = await mailbox.EstimateAsync("inbox", true, ct);
@@ -623,7 +624,7 @@ public sealed class UiServer
         if (!GraphTokenProvider.HasRecord(account.Id)) return new { signedIn = false, error = state?.Error };
         try
         {
-            var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), _http, ct);
+            await using var mailbox = await MailboxFactory.OpenAsync(account, AppConfig.Load(), _http, ct);
             return new { signedIn = true, account = await mailbox.GetIdentityAsync(ct) };
         }
         catch (Exception ex)
@@ -661,7 +662,8 @@ public sealed class UiServer
                     var accounts = AccountStore.Load();
                     var saved = accounts.FirstOrDefault(a => a.Id == account.Id);
                     if (saved is not null && saved.Email != account.Email) { saved.Email = account.Email; AccountStore.Save(accounts); }
-                    _engines.Remove(account.Id);
+                    // Outside the job lock, but safe: this is a Microsoft account and Graph disposal is a no-op.
+                    await EvictEngineAsync(account.Id);
                 }
                 catch (Exception ex)
                 {
@@ -686,11 +688,12 @@ public sealed class UiServer
         }
     }
 
-    private object SignOut(string accountId)
+    /// <summary>Under the job lock: an evicted IMAP mailbox is disposed, which must not happen mid-batch.</summary>
+    private async Task<object?> SignOutAsync(string accountId)
     {
         var account = Account(accountId);
         if (account.IsGraph) GraphTokenProvider.DeleteRecord(account.Id); else SecretStore.Delete(account.Id);
-        _engines.Remove(account.Id);
+        await EvictEngineAsync(account.Id);
         return new { signedIn = false };
     }
 
@@ -698,7 +701,12 @@ public sealed class UiServer
     // processing session (one engine per account)
     // ---------------------------------------------------------------------
 
-    private readonly Dictionary<string, (TriageEngine Engine, string Key)> _engines = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// One engine (and one open mailbox) per account. Concurrent because the Microsoft sign-in task
+    /// evicts from a background thread; every other access runs under <see cref="_jobLock"/>.
+    /// A replaced or evicted engine's mailbox is disposed so its IMAP connection is closed.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, (TriageEngine Engine, string Key)> _engines = new(StringComparer.OrdinalIgnoreCase);
 
     private async Task<TriageEngine> EngineAsync(MailAccount account, string? apiKey, CollectingSink sink, CancellationToken ct)
     {
@@ -707,11 +715,18 @@ public sealed class UiServer
         if (!_engines.TryGetValue(account.Id, out var entry) || entry.Key != key)
         {
             var mailbox = await MailboxFactory.OpenAsync(account, config, _http, ct);
+            var replaced = entry.Engine;
             entry = (new TriageEngine(mailbox, new JobStore(account.Id), new JevClient(_http, config.ResolvedEndpoint, key), config.ResolvedModel, sink), key);
             _engines[account.Id] = entry;
+            if (replaced is not null) await replaced.Mailbox.DisposeAsync();
         }
         entry.Engine.Sink = sink;
         return entry.Engine;
+    }
+
+    private async Task EvictEngineAsync(string accountId)
+    {
+        if (_engines.TryRemove(accountId, out var entry)) await entry.Engine.Mailbox.DisposeAsync();
     }
 
     private async Task<object?> StartJobAsync(JsonElement options, CancellationToken ct)
@@ -742,6 +757,7 @@ public sealed class UiServer
             : RuleStore.Load();
 
         var sink = new CollectingSink();
+        using var jobLock = new JobStore(account.Id).Lock();
         var engine = await EngineAsync(account, apiKey, sink, ct);
         var job = await engine.StartAsync(runOptions, rules, ct);
         return new { job = JobDto(job), events = sink.Events, results = sink.Results };
@@ -750,7 +766,9 @@ public sealed class UiServer
     private async Task<object?> ProcessNextBatchAsync(string jobId, string apiKey, string accountId, CancellationToken ct)
     {
         var account = Account(accountId);
-        var job = new JobStore(account.Id).Load();
+        var store = new JobStore(account.Id);
+        using var jobLock = store.Lock(); // the CLI may be running this session: load and process only while holding it
+        var job = store.Load();
         if (job is null || job.Id != jobId) throw new InvalidOperationException("This processing session is no longer available.");
         var sink = new CollectingSink();
         if (job.IsRunning)
@@ -764,6 +782,7 @@ public sealed class UiServer
     private async Task<object?> ResumeJobAsync(string accountId, CancellationToken ct)
     {
         var account = Account(accountId);
+        using var jobLock = new JobStore(account.Id).Lock();
         var engine = await EngineAsync(account, null, new CollectingSink(), ct);
         return JobDto(engine.Resume(null));
     }
@@ -786,7 +805,7 @@ public sealed class UiServer
         var config = AppConfig.Load();
         var jev = new JevClient(_http, config.ResolvedEndpoint, config.ResolveApiKey(apiKey));
         var rules = RuleStore.Load();
-        var mailbox = await MailboxAsync(accountId, ct);
+        await using var mailbox = await MailboxAsync(accountId, ct);
         await mailbox.ConnectAsync(ct);
 
         if (itemId == "latest")
@@ -853,7 +872,7 @@ public sealed class UiServer
             from = metadata.From,
             receivedDateTime = metadata.Date,
             categories = metadata.Categories,
-            alreadyTriaged = TriageEngine.HasConfiguredCategory(metadata.Categories, rules),
+            alreadyTriaged = TriageEngine.HasConfiguredCategory(metadata.Categories, rules, mailbox.StoredLabel),
             stages,
             final = new { ruleId = rule.Id, label = rule.Name, spam = rule.Spam, archivable = CanArchive(rule.Spam, final.Confidence), archiveThreshold = AppConstants.DefaultArchiveThreshold, confidence = final.Confidence, stage = finalStage, probabilities = ((dynamic)stages[^1]).probabilities },
             costUsd = cost,
@@ -879,7 +898,7 @@ public sealed class UiServer
         var rules = RuleStore.Load();
         var rule = RuleValidator.ById(rules, ruleId) ?? throw new ArgumentException("Unknown category.");
         if (archive && !rule.Spam) throw new InvalidOperationException($"“{rule.Name}” is not archive eligible.");
-        var mailbox = await MailboxAsync(accountId, ct);
+        await using var mailbox = await MailboxAsync(accountId, ct);
         var caps = await mailbox.ConnectAsync(ct);
         if (archive && !caps.CanArchive) throw new InvalidOperationException("This mailbox has no archive destination.");
 
@@ -888,7 +907,7 @@ public sealed class UiServer
         var current = await mailbox.ReadMessagesAsync([itemId], ReadMode.Labels, ct);
         if (!current[0].Ok) throw new InvalidOperationException(current[0].NotFound ? "This message could not be found in the mailbox." : "The mailbox could not read the message: " + current[0].Error);
         var merged = new List<string>(current[0].Labels);
-        var categoryName = names.GetValueOrDefault(rule.Name.ToLowerInvariant(), rule.Name);
+        var categoryName = names.GetValueOrDefault(rule.Name.ToLowerInvariant(), mailbox.StoredLabel(rule.Name));
         if (!merged.Any(c => string.Equals(c, categoryName, StringComparison.OrdinalIgnoreCase))) merged.Add(categoryName);
 
         var outcome = await mailbox.ApplyLabelsAsync([(itemId, merged)], ct);
@@ -906,6 +925,7 @@ public sealed class UiServer
     private static object CancelJob(string accountId)
     {
         var store = new JobStore(Account(accountId).Id);
+        using var jobLock = store.Lock();
         var job = store.Load();
         if (job is null) return new { ok = true };
         if (job.Status is JobStatus.Completed or JobStatus.Cancelled) return new { ok = true, job = JobDto(job) };
@@ -918,6 +938,7 @@ public sealed class UiServer
     private static object ClearJob(string accountId)
     {
         var store = new JobStore(Account(accountId).Id);
+        using var jobLock = store.Lock();
         var job = store.Load();
         if (job is { Status: JobStatus.Running }) throw new InvalidOperationException("Stop processing before clearing the session.");
         store.Delete();

@@ -57,6 +57,9 @@ public sealed class GraphMailClient : IMailbox
 
     public MailboxCapabilities Capabilities => _capabilities;
 
+    /// <summary>Nothing to release: the HttpClient is shared and owned by the caller, tokens live in the OS cache.</summary>
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     // ----- Identity ---------------------------------------------------------
 
     public async Task<string> GetIdentityAsync(CancellationToken ct)
@@ -252,6 +255,9 @@ public sealed class GraphMailClient : IMailbox
         return result;
     }
 
+    /// <summary>Outlook categories are stored under the rule name itself.</summary>
+    public string StoredLabel(string ruleName) => ruleName;
+
     // ----- Category cleanup -------------------------------------------------------------
 
     /// <summary>Ids (+ current categories) of up to <paramref name="top"/> messages carrying <paramref name="label"/>, anywhere in the mailbox.</summary>
@@ -308,6 +314,11 @@ public sealed class GraphMailClient : IMailbox
             new JsonObject { ["categories"] = new JsonArray(u.Labels.Select(c => (JsonNode)JsonValue.Create(c)!).ToArray()) })).ToList();
         return ExecuteWritesAsync(requests, "update categories", ct);
     }
+
+    /// <summary>Remove one category: PATCH each message with its categories minus <paramref name="label"/>.</summary>
+    public Task<WriteOutcome> RemoveLabelAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Labels)> messages, string label, CancellationToken ct) =>
+        ApplyLabelsAsync(messages.Select(m => (m.Id, (IReadOnlyList<string>)m.Labels
+            .Where(c => !string.Equals(c, label, StringComparison.OrdinalIgnoreCase)).ToList())).ToList(), ct);
 
     /// <summary>Move messages to the well-known Archive folder (the Outlook equivalent of removing INBOX).</summary>
     public Task<WriteOutcome> ArchiveAsync(IReadOnlyList<string> ids, CancellationToken ct)

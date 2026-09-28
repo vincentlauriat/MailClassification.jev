@@ -40,19 +40,19 @@ Web/UiServer  ──┼─► Triage/TriageEngine ─► Mail/IMailbox ┤
 | Module | Responsabilité |
 | --- | --- |
 | `AppConstants` | Tous les réglages (fenêtres de concurrence, délais de retry, seuils, valeurs par défaut) |
-| `Rules/*` | Record `LabelRule`, 7 playbooks (identiques à jevMail), validation (≤ 12 règles, pas de `,`/`;`, régénération des ids) |
-| `Mail/IMailbox` | La surface exacte dont le moteur a besoin : identité, capacités, estimation, listing par curseur, lectures groupées (`ReadPart`), `EnsureLabels`, `ApplyLabels`, `Archive`, nettoyage. Ids et curseurs sont des chaînes opaques du fournisseur ; `MailboxException(transient)` décide entre pause et erreur |
+| `Rules/*` | Record `LabelRule`, 7 playbooks (identiques à jevMail), validation (≤ 12 règles, pas de `,`/`;`, pas deux noms donnant le même mot-clé IMAP, régénération des ids) |
+| `Mail/IMailbox` | La surface exacte dont le moteur a besoin : identité, capacités, estimation, listing par curseur, lectures groupées (`ReadPart`), `StoredLabel` (nom de règle → libellé stocké), `EnsureLabels`, `ApplyLabels`, `Archive`, nettoyage (`FindMessagesWithLabel`, `RemoveLabel`, `DeleteLabel`). Ids et curseurs sont des chaînes opaques du fournisseur ; `MailboxException(transient)` décide entre pause et erreur. `IAsyncDisposable` : une boîte IMAP tient une connexion ouverte, la libération Graph est sans effet |
 | `Mail/MailboxFactory` | Ouvre le bon fournisseur pour un `MailAccount` (Graph : record de connexion ; IMAP : mot de passe du coffre) ; connexion Microsoft interactive ; test de disponibilité |
 | `Mail/MessageMetadata`, `MessageContent` | L'objet `email` plat envoyé à Jev (depuis le JSON Graph ou l'enveloppe/en-têtes IMAP) ; HTML→texte ; compaction tête/queue |
-| `Storage/*` | Chemins, écritures JSON atomiques 0600, `AppConfig` (global), `RuleStore` (règles globales), `AccountStore` (`accounts.json`), `SecretStore`, `JobStore` (un par compte : session + règles figées) |
+| `Storage/*` | Chemins, écritures JSON atomiques 0600, `AppConfig` (global), `RuleStore` (règles globales), `AccountStore` (`accounts.json`), `SecretStore`, `JobStore` (un par compte : session + règles figées + le verrou inter-processus `job.lock`) |
 | `Graph/GraphAuth` | Credential par compte (tenant surchargeable), connexion device-code / navigateur, record sous `accounts/<id>/`, migration de l'ancien état mono-boîte |
 | `Graph/GraphMailClient` | `IMailbox` sur Graph : listing par curseur `receivedDateTime`, lectures `$batch`, catégories maîtres (couleurs), PATCH des catégories, déplacement vers Archive, gestion du throttling |
-| `Imap/ImapMailbox` | `IMailbox` sur MailKit : listing par UID, fetch enveloppe/en-têtes, labels Gmail ou mots-clés IMAP, archivage (All Mail / dossier Archive), une connexion sérialisée avec reconnexion |
+| `Imap/ImapMailbox` | `IMailbox` sur MailKit : listing par UID, fetch enveloppe/en-têtes, labels Gmail ou mots-clés IMAP (écritures en ajout seul ; `ImapSupport.ToKeyword` convertit les noms, les noms réservés en `jev-…`), archivage (All Mail / dossier Archive), une connexion sérialisée avec reconnexion, fermée à la libération |
 | `Jev/JevPayloadBuilder` | Construit la question Choice (options `L0..Ln`), garde-fou de taille (29 000 octets), estimation de coût |
 | `Jev/JevClient` | Envoie une requête Decisions ; validation stricte du contrat ; source du coût |
 | `Triage/TriageEngine` | Cycle de vie de session, lots, deux vagues, concurrence adaptative, budget, disjoncteur, écritures groupées — indépendant du fournisseur |
 | `Cli/*` | Commandes `account`, `--account` / `--all-accounts`, run/continue/status, rendu terminal, saisie masquée du mot de passe ; `ServiceCommand` (`service install/status/restart/uninstall`, LaunchAgent macOS, voir §10) |
-| `Web/UiServer` | Tableau de bord local (ASP.NET Core minimal API sur 127.0.0.1) : sert la page embarquée et expose les fonctions serveur de jevMail en `POST /api/{function}` (arguments en tableau JSON) plus `addAccount` / `removeAccount` / `testAccount` ; un moteur et un état de connexion device-code par compte. `GET /health` → `{app, version, https}` identifie un jevOutlook en cours d'exécution (instance unique, `service status`) ; `AllowedOrigins(port, httpsPort)` est l'unique endroit qui construit les listes blanches Host/Origin |
+| `Web/UiServer` | Tableau de bord local (ASP.NET Core minimal API sur 127.0.0.1) : sert la page embarquée et expose les fonctions serveur de jevMail en `POST /api/{function}` (arguments en tableau JSON) plus `addAccount` / `removeAccount` / `testAccount` ; un moteur et un état de connexion device-code par compte. Les moteurs vivent dans un `ConcurrentDictionary` ; la boîte d'un moteur remplacé ou évincé est libérée, et les boîtes ponctuelles (sonde d'ajout de compte, `testAccount`, `authStatus`, `classifyItem`, `applyItem`) sont en `await using` : aucune connexion IMAP ne fuit (Gmail limite à 15 connexions IMAP simultanées). Les appels de session (`startTriageJob`, `processNextBatch`, `resumeTriageJob`, `cancelTriageJob`, `clearFinishedJob`) passent par le `_jobLock` interne et tentent de prendre le `job.lock` du compte ; `signOut` passe par `_jobLock` car il peut libérer une boîte IMAP. `GET /health` → `{app, version, https}` identifie un jevOutlook en cours d'exécution (instance unique, `service status`) ; `AllowedOrigins(port, httpsPort)` est l'unique endroit qui construit les listes blanches Host/Origin |
 | `Web/wwwroot/*` | `index.html` + `style.css` adaptés de jevMail (MIT) : un pont émule `google.script.run` sur `fetch` ; carte Mailboxes (puces, ajout/test/connexion/suppression, file « Run all mailboxes ») ; `taskpane.html` (Office.js) et icônes du complément Outlook |
 | Complément Outlook | Manifeste XML classique servi sur `/manifest.xml` ; le volet est servi en HTTPS par le serveur local, que le LaunchAgent (§10) maintient en marche. Un tenant d'entreprise a refusé le chargement (« installation failed » générique alors que le manifeste passe le validateur Microsoft) : les tenants qui désactivent les compléments personnalisés le bloquent toujours. Un id de compte vide côté API désigne la première boîte Microsoft prête |
 
@@ -60,9 +60,9 @@ Web/UiServer  ──┼─► Triage/TriageEngine ─► Mail/IMailbox ┤
 
 | Concept | Outlook (Graph) | Gmail (IMAP) | IMAP générique (ex. Dovecot) |
 | --- | --- | --- | --- |
-| Libellé | Catégorie maître (`POST /me/outlook/masterCategories` avec couleur) + `PATCH /me/messages/{id}` `{categories}` (remplacement complet → catégories existantes fusionnées, jamais perdues) | Label Gmail (dossier de l'espace personnel, créé s'il manque) posé via `X-GM-LABELS` (`AddLabels` / `RemoveLabels`) | Mot-clé IMAP (flag personnalisé) via `STORE +FLAGS` quand le dossier annonce `PERMANENTFLAGS \*` ; sinon l'étiquetage échoue fermé avec un message clair |
+| Libellé | Catégorie maître (`POST /me/outlook/masterCategories` avec couleur) + `PATCH /me/messages/{id}` `{categories}` (remplacement complet → catégories existantes fusionnées, jamais perdues) | Label Gmail (dossier de l'espace personnel, créé s'il manque, au nom de la règle) ajouté via `STORE +X-GM-LABELS` ; jamais retiré par un run (seulement `cleanup remove-category`, `-X-GM-LABELS`). Le spam Gmail est le label système `\Spam` : le libellé d'une règle est un dossier utilisateur de l'espace personnel, et l'écriture n'ajoute jamais de label `\…` (`ImapSupport.LabelsToAdd`) | Mot-clé IMAP (flag personnalisé) ajouté via `STORE +FLAGS` quand le dossier annonce `PERMANENTFLAGS \*` ; sinon l'étiquetage échoue fermé avec un message clair. Nom → mot-clé (`ImapSupport.ToKeyword`) : atomes tels quels, autres caractères en `_`, noms réservés (`junk`, `nonjunk`, `notjunk`, `forwarded`, `phishing`, `mdnsent`, tout `$…`, sans tenir compte de la casse) → `jev-<nom>`, pour qu'un run ne pose jamais le marqueur junk ou d'état d'un client. Jamais retiré par un run (seulement `cleanup`, `-FLAGS`) |
 | Archivage | `POST /me/messages/{id}/move` `{destinationId:"archive"}` | Déplacement Inbox → `[Gmail]/All Mail` (= retrait du label Inbox ; le message reste dans All Mail) | Déplacement vers le dossier `Archive` (special-use ou créé) |
-| Marqueur | aucun : « déjà traité » = porte l'un des libellés configurés | idem | idem |
+| Marqueur | aucun : « déjà traité » = porte l'un des libellés configurés | idem | idem, comparé au mot-clé stocké de chaque règle (`StoredLabel`), sans tenir compte de la casse |
 | Portée `inbox` / `all` | `/me/mailFolders/inbox/messages` / `/me/messages` avec exclusion côté client de Junk, Deleted Items, Drafts | `INBOX` / `[Gmail]/All Mail` | `INBOX` seulement (`SupportsAllScope=false`, refusé au démarrage) |
 | Non lus | `isRead eq false` | `NOT SEEN` | `NOT SEEN` |
 | Id de message | Id Graph (change au déplacement → 404 au replay géré) | `scope:uidvalidity:uid` | idem |
@@ -106,7 +106,10 @@ de la boîte de réception en cours de run ne décale jamais les pages.
    groupées idempotentes — les libellés courants de chaque message sont **relus au même
    instant** (une écriture de remplacement sur un instantané vieux de plusieurs minutes
    écraserait les changements de l'utilisateur), puis `ApplyLabels` (courant ∪ {libellé}), puis
-   `Archive` pour les décisions d'archivage. Un échec transitoire de la boîte met la session en
+   `Archive` pour les décisions d'archivage. Graph envoie ce jeu fusionné en PATCH (remplacement
+   complet, d'où la relecture) ; IMAP/Gmail n'ajoutent que le libellé manquant
+   (`ImapSupport.LabelsToAdd`) et n'en retirent jamais : un libellé posé par un filtre ou un autre
+   client entre la relecture et l'écriture est conservé. Un échec transitoire de la boîte met la session en
    pause avec toutes les décisions sauvegardées. Au replay, un élément avec décision finale
    mais introuvable (son id a changé parce que le déplacement a réussi avant le checkpoint) est
    compté comme traité, pas ignoré.
@@ -138,6 +141,7 @@ de la boîte de réception en cours de run ne décale jamais les pages.
 | Ctrl+C pendant une vague | Réservations des requêtes sans réponse libérées ; réenvoyées à la reprise |
 | Budget dépassé | Statut `budget` ; `continue --max-spend` pour relever |
 | Ctrl+C | Pause `user-stop` ; `continue` reprend (et réarme le disjoncteur) |
+| Un autre processus tient le `job.lock` du compte (lot du tableau de bord vs `run`/`continue` en CLI) | Refus avant toute modification : « Another jevOutlook process is processing this mailbox right now (dashboard or CLI). Wait for it or stop it, then retry. » `run --all-accounts` saute cette boîte (code 1) |
 
 ## 7. Persistance
 
@@ -151,6 +155,7 @@ de la boîte de réception en cours de run ne décale jamais les pages.
     auth-record.json     AuthenticationRecord MSAL (boîtes Microsoft ; les jetons vivent dans le cache de l'OS)
     job.json             session courante : options, curseur (clé de tri), compteurs, dépense, éléments en attente avec décisions
     job-rules.json       règles figées pour la session courante
+    job.lock             verrou exclusif (FileStream + FileShare.None = flock consultatif sous Unix) ; jamais supprimé
   logs/ui.log            stdout/stderr du LaunchAgent
 ~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist   LaunchAgent (macOS), aucun secret
 ```
@@ -160,6 +165,14 @@ fichiers sont écrits atomiquement (`.tmp` + move) en mode 0600 ; les répertoir
 L'ancienne disposition mono-boîte (`auth-record.json`, `job.json` à la racine) est migrée une
 fois en entrée de compte au premier démarrage ; l'ancienne session est abandonnée car le type
 du curseur a changé.
+
+**Un seul processus par session.** `job.lock` est tenu par la CLI pendant toute la boucle `run` / `continue`
+(et `clear-job`), et pris sans attente par le tableau de bord à chaque appel de session. Sans lui, le tableau de
+bord toujours actif et un `continue` en terminal pourraient traiter la même session `Running` en même temps : tous
+deux paieraient les mêmes messages et écraseraient mutuellement `SpentUsd` (jusqu'à environ deux fois le plafond) et
+le statut (annulation perdue). Le verrou est lié à la description de fichier ouverte : une seconde ouverture échoue
+même dans le même processus ; le noyau le libère quand le détenteur se termine ou plante, et `using` le libère sur
+exception et annulation.
 
 ## 8. Notes de sécurité
 
@@ -200,6 +213,11 @@ du curseur a changé.
   du LaunchAgent, exclusion des secrets, échappement XML, `plutil -lint`, liste blanche des origines, reconnaissance du corps `/health`).
 - 2026-09-28 : 88 tests passent (+9 : règle de l'add-in pour un message seul — relecture du corps pour une catégorie
   archivable sous 0,93, et « Apply + archive » proposé seulement à 0,93, le seuil d'archivage des traitements par lot).
+- 2026-09-28 : 114 tests passent (+26 net : 28 nouveaux, 2 tests `Diff` retirés), `dotnet build -c Release` 0 avertissement, 0 erreur :
+  conversion des mots-clés IMAP réservés, écritures de libellés en ajout seul, reconnaissance « déjà étiqueté » par
+  mot-clé et validation des collisions, libération d'`IMailbox` (sans effet pour Graph), `job.lock` par compte (refus
+  dans le même processus, libération sur exception). Un second processus a été vérifié à la main : refusé pendant la
+  détention (y compris par `flock(LOCK_NB)`), accepté une fois le détenteur terminé.
 
 ## 10. Maintenir le serveur en marche (LaunchAgent macOS)
 
