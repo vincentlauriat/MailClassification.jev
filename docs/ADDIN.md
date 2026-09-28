@@ -57,7 +57,8 @@ The card shows the subject and the sender of the open message.
    - the **cost** of the request, for example `Cost $0.000135`.
 2. **Apply category** adds that category to the message.
 3. **Apply + archive** adds the category and moves the message to the Archive folder. The
-   button only appears when the chosen category is marked *archive eligible* in your rules.
+   button only appears when the chosen category is marked *archive eligible* in your rules
+   **and** its confidence is at least 0.93, the same archive threshold as a batch run.
 
 **Nothing changes in Outlook until you click Apply.** Classifying is read-only. Applying
 **adds** the category: the message's existing categories are kept. If the message already
@@ -336,9 +337,10 @@ likely disabled for your organisation. See [§9](#9-troubleshooting).
    the message's resulting list of categories, or with *"Category applied and message moved to
    Archive."*
 
-**Archiving a single message is your decision.** The **Apply + archive** button appears for
-any archive-eligible category, whatever the confidence. The 0.93 archive threshold that
-protects batch runs does not apply to this button. Look at the confidence before you use it.
+**Archiving follows the batch rule.** When the category is archive eligible but the metadata
+pass is below 0.93, the pane reads the message text before deciding, exactly as a batch run in
+archive mode does. If the final confidence is still below 0.93, **Apply + archive** is not
+offered and the note says why; **Apply category** stays available.
 
 When you select another message while the pane is open, the pane follows it and clears the
 previous result, if your Outlook client keeps the pane open.

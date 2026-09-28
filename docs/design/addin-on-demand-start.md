@@ -27,7 +27,7 @@ Outlook ──loads──▶ static pane (GitHub Pages, https)
 
 ## 1. Static pane
 
-- Hosted on GitHub Pages next to the landing page: `docs/addin/index.html` (+ icons).
+- Hosted on GitHub Pages next to the landing page: `docs/addin/pane/index.html` (+ icons). `docs/addin/` itself is the add-in documentation page.
 - On load it probes `http://127.0.0.1:5177/health` with `fetch` and a short timeout. It
   accepts only a body whose `app` is `jevoutlook` (same rule as `UiServer.ParseHealth`).
 - Server up: `location.replace('https://localhost:5178/taskpane.html')`. The Office.js
@@ -85,7 +85,7 @@ Outlook ──loads──▶ static pane (GitHub Pages, https)
 
 1. Spike: can each Outlook client open `jevoutlook://` from a pane? This decides go or no-go.
 2. `/health` CORS + PNA preflight for the Pages origin, with tests on `AllowedOrigins`.
-3. Static pane `docs/addin/`, with probe, switch, start button and fallback.
+3. Static pane `docs/addin/pane/`, with probe, switch, start button and fallback.
 4. `BuildManifest(baseUrl)` and `addin manifest --pane static|local`.
 5. Launcher `.app` with URL handler; sign, notarize, DMG.
 6. End-to-end test on Outlook for Mac and new Outlook; update README §6.6.

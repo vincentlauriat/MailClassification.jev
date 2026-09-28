@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
-[![Tests](https://img.shields.io/badge/tests-79%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
+[![Tests](https://img.shields.io/badge/tests-88%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
 [![Landing page](https://img.shields.io/badge/site-vincentlauriat.github.io-0f6cbd.svg)](https://vincentlauriat.github.io/MailClassification.jev/)
 [![Outlook add-in guide](https://img.shields.io/badge/Outlook%20add--in-guide-0f6cbd.svg)](docs/ADDIN.md)
 
@@ -688,7 +688,7 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
 | Gmail / IMAP mailboxes | [MailKit](https://github.com/jstedfast/MailKit): UID cursor, `X-GM-LABELS` for Gmail, keywords (`STORE ±FLAGS`) elsewhere |
 | Model | Jev `~typesafe/jev-latest` through OpenRouter's Decisions API (or TypeSafe's API directly); strict validation of the answer contract |
 | Engine | Provider-agnostic `TriageEngine` behind an `IMailbox` interface: batches of 50, two concurrent waves, adaptive concurrency, budget reservation, circuit breaker, grouped idempotent writes |
-| Tests | 79 xUnit tests on the pure logic: rules, payload, answer parsing, text extraction, cursor paging, IMAP helpers, add-in manifest, LaunchAgent plist, origin allowlist |
+| Tests | 88 xUnit tests on the pure logic: rules, payload, answer parsing, text extraction, cursor paging, IMAP helpers, add-in manifest, LaunchAgent plist, origin allowlist, add-in archive rule |
 
 ```
 src/JevOutlook/

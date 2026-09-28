@@ -191,6 +191,8 @@ account entry on first start; the old session is dropped because its cursor type
   Gmail app passwords, the IMAP password, the second Microsoft tenant's admin consent).
 - 2026-09-28: `dotnet build -c Release` 0 warnings, 0 errors; `dotnet test` 79 tests pass (+13: LaunchAgent plist
   contents, secret exclusion, XML escaping, `plutil -lint`, origin allowlist, `/health` body recognition).
+- 2026-09-28: 88 tests pass (+9: the add-in's single-message rule — body review for an archive-eligible label below
+  0.93, and "Apply + archive" offered only at 0.93, the batch run's archive threshold).
 
 ## 10. Keeping the server running (macOS LaunchAgent)
 

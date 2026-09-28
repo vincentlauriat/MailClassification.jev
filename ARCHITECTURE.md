@@ -198,6 +198,8 @@ du curseur a changé.
   disponible : mots de passe d'application Gmail, mot de passe IMAP, consentement administrateur du second tenant Microsoft).
 - 2026-09-28 : `dotnet build -c Release` 0 avertissement, 0 erreur ; `dotnet test` 79 tests passent (+13 : contenu du plist
   du LaunchAgent, exclusion des secrets, échappement XML, `plutil -lint`, liste blanche des origines, reconnaissance du corps `/health`).
+- 2026-09-28 : 88 tests passent (+9 : règle de l'add-in pour un message seul — relecture du corps pour une catégorie
+  archivable sous 0,93, et « Apply + archive » proposé seulement à 0,93, le seuil d'archivage des traitements par lot).
 
 ## 10. Maintenir le serveur en marche (LaunchAgent macOS)
 
