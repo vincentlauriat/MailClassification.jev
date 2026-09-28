@@ -109,21 +109,7 @@ public sealed class UiServer
         // Defense against DNS rebinding and cross-site requests to the local API:
         // only our own Host, only same-origin API calls, only JSON bodies (forces a
         // CORS preflight, which this server never answers).
-        var allowedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            $"127.0.0.1:{port}", $"localhost:{port}",
-        };
-        var allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            $"http://127.0.0.1:{port}", $"http://localhost:{port}",
-        };
-        if (httpsPort is { } hps)
-        {
-            allowedHosts.Add($"localhost:{hps}");
-            allowedHosts.Add($"127.0.0.1:{hps}");
-            allowedOrigins.Add($"https://localhost:{hps}");
-            allowedOrigins.Add($"https://127.0.0.1:{hps}");
-        }
+        var (allowedHosts, allowedOrigins) = AllowedOrigins(port, httpsPort);
         app.Use(async (context, next) =>
         {
             if (!allowedHosts.Contains(context.Request.Host.Value ?? string.Empty))
@@ -149,12 +135,97 @@ public sealed class UiServer
         });
 
         app.MapGet("/", () => Static("index.html", "text/html; charset=utf-8"));
+        app.MapGet("/health", () => Results.Json(new { app = HealthAppName, version = AppVersion, https = httpsPort is not null }, Json));
         app.MapGet("/manifest.xml", () => httpsPort is { } hp
             ? Results.Text(BuildManifest(hp), "application/xml; charset=utf-8")
             : Results.Text("HTTPS is not enabled; start the server with an HTTPS port to get the add-in manifest.", "text/plain", statusCode: 503));
         app.MapGet("/{file}", (string file) => Static(file, ContentType(file)));
         app.MapPost("/api/{function}", HandleApiAsync);
         return app;
+    }
+
+    /// <summary>
+    /// Host headers and Origins the local server accepts (plain port on 127.0.0.1 and
+    /// localhost, plus the HTTPS port when enabled). Every allowlist lives here.
+    /// </summary>
+    public static (HashSet<string> Hosts, HashSet<string> Origins) AllowedOrigins(int port, int? httpsPort)
+    {
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            $"127.0.0.1:{port}", $"localhost:{port}",
+        };
+        var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            $"http://127.0.0.1:{port}", $"http://localhost:{port}",
+        };
+        if (httpsPort is { } hps)
+        {
+            hosts.Add($"localhost:{hps}");
+            hosts.Add($"127.0.0.1:{hps}");
+            origins.Add($"https://localhost:{hps}");
+            origins.Add($"https://127.0.0.1:{hps}");
+        }
+        return (hosts, origins);
+    }
+
+    // ---------------------------------------------------------------------
+    // health (single instance, service status)
+    // ---------------------------------------------------------------------
+
+    /// <summary>Value of <c>app</c> in the <c>GET /health</c> answer.</summary>
+    public const string HealthAppName = "jevoutlook";
+
+    public static string AppVersion => typeof(UiServer).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+
+    public enum HealthState { Free, JevOutlook, Foreign }
+
+    /// <summary>
+    /// Probe <c>http://127.0.0.1:{port}/health</c>. <see cref="HealthState.Free"/>: nothing
+    /// listens; <see cref="HealthState.JevOutlook"/>: a jevOutlook server answers;
+    /// <see cref="HealthState.Foreign"/>: something else (or an older jevOutlook without
+    /// <c>/health</c>) holds the port.
+    /// </summary>
+    public static async Task<(HealthState State, string? Version)> ProbeAsync(HttpClient http, int port, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            using var response = await http.GetAsync($"http://127.0.0.1:{port}/health", timeout.Token);
+            var body = await response.Content.ReadAsStringAsync(timeout.Token);
+            return response.IsSuccessStatusCode && ParseHealth(body) is { } version
+                ? (HealthState.JevOutlook, version)
+                : (HealthState.Foreign, null);
+        }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.ConnectionRefused })
+        {
+            return (HealthState.Free, null); // nothing listens
+        }
+        catch (HttpRequestException)
+        {
+            return (HealthState.Foreign, null); // a listener that does not speak HTTP (reset, garbage)
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (HealthState.Foreign, null); // accepted the connection but never answered
+        }
+    }
+
+    /// <summary>The version from a jevOutlook <c>/health</c> body, or null when the body is anything else.</summary>
+    internal static string? ParseHealth(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("app", out var app) || app.ValueKind != JsonValueKind.String || app.GetString() != HealthAppName) return null;
+            return root.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : string.Empty;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -281,7 +352,7 @@ public sealed class UiServer
         _ => "application/octet-stream",
     };
 
-    private static void TryOpenBrowser(string url)
+    internal static void TryOpenBrowser(string url)
     {
         try
         {

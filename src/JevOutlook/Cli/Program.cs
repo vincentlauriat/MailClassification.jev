@@ -42,6 +42,7 @@ public static class Program
                 "rules" => Rules(rest),
                 "ui" or "dashboard" or "serve" => await UiAsync(rest, cts.Token),
                 "addin" => AddIn(rest),
+                "service" => await ServiceCommand.RunAsync(rest, Http, cts.Token),
                 "cleanup" => await CleanupAsync(rest, cts.Token),
                 "run" => await RunAsync(rest, cts.Token),
                 "continue" or "resume" => await ContinueAsync(rest, cts.Token),
@@ -111,7 +112,14 @@ public static class Program
             DASHBOARD
               ui [--port 5177] [--https-port 5178] [--no-https] [--no-open]
                                                  Local web dashboard for all mailboxes
-              addin manifest [--out file.xml]    Outlook add-in manifest (Microsoft 365 only, parked)
+              addin manifest [--out file.xml]    Outlook add-in manifest (Microsoft 365 only)
+
+            SERVICE (macOS)
+              service install [--port 5177] [--https-port 5178] [--exe <path>]
+                                                 Keep 'ui --no-open' running from login (LaunchAgent)
+              service status [--port 5177]       Agent state, /health probe and log path
+              service restart                    Restart the agent (after a rebuild)
+              service uninstall                  Stop the agent and remove it
 
             MAINTENANCE
               cleanup remove-category <name> [--account <id>] [--dry-run] [--keep-master]
@@ -499,6 +507,22 @@ public static class Program
         var port = (int)Number(args, "--port", 5177);
         var httpsPort = (int)Number(args, "--https-port", 5178);
         if (port is < 1 or > 65535 || httpsPort is < 1 or > 65535) throw new ArgumentException("Ports must be between 1 and 65535.");
+
+        // Single instance: a second 'ui' (by hand while the LaunchAgent runs, or the
+        // agent while a manual one runs) reuses the running server instead of failing to bind.
+        var (state, version) = await Web.UiServer.ProbeAsync(Http, port, ct);
+        if (state == Web.UiServer.HealthState.JevOutlook)
+        {
+            var url = $"http://127.0.0.1:{port}/";
+            Console.WriteLine($"jevOutlook {version} is already running: {url}");
+            if (!args.Contains("--no-open")) Web.UiServer.TryOpenBrowser(url);
+            return 0;
+        }
+        if (state == Web.UiServer.HealthState.Foreign)
+        {
+            throw new InvalidOperationException($"Port {port} answers but not as a current jevOutlook (another program, or an older jevOutlook without /health). Stop it, or pick another port with --port.");
+        }
+
         await new Web.UiServer(Http).RunAsync(port, args.Contains("--no-https") ? null : httpsPort, openBrowser: !args.Contains("--no-open"), ct);
         return 0;
     }
@@ -512,7 +536,8 @@ public static class Program
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(output, Web.UiServer.BuildManifest(httpsPort));
         Console.WriteLine($"Manifest written to {output}");
-        Console.WriteLine("Sideload it in Outlook: Get Add-ins → My add-ins → Add a custom add-in → Add from file. Keep 'jevoutlook ui' running.");
+        Console.WriteLine("Sideload it in Outlook: Get Add-ins → My add-ins → Add a custom add-in → Add from file.");
+        Console.WriteLine("Run 'jevoutlook service install' once so the pane is always available (macOS), or keep 'jevoutlook ui' running.");
         return 0;
     }
 
@@ -667,7 +692,7 @@ public static class Program
     // argument helpers
     // ---------------------------------------------------------------------
 
-    private static string? Option(string[] args, string name)
+    internal static string? Option(string[] args, string name)
     {
         for (var i = 0; i < args.Length; i++)
         {
@@ -680,7 +705,7 @@ public static class Program
         return null;
     }
 
-    private static double Number(string[] args, string name, double fallback)
+    internal static double Number(string[] args, string name, double fallback)
     {
         var raw = Option(args, name);
         if (raw is null) return fallback;

@@ -120,7 +120,7 @@
         el('status').textContent = (auth.signedIn ? auth.account.replace(/<.*>/, '').trim() : 'Not signed in — use the dashboard') + (ui.hasSavedKey ? '' : ' · no API key');
         state.job = ui.job;
         if (state.job && state.job.status === 'running') renderJob(state.job);
-      }).catch(function(e) { el('status').textContent = 'Local server unreachable: ' + e.message; });
+      }).catch(function(e) { el('status').textContent = 'Local server unreachable: ' + e.message + ' — run "jevoutlook service status", then "jevoutlook service restart" (or "service install" once).'; });
     }
 
     // ----- current message -----
