@@ -1,5 +1,7 @@
 using JevOutlook.Imap;
 using JevOutlook.Mail;
+using JevOutlook.Rules;
+using JevOutlook.Triage;
 using JevOutlook.Storage;
 using MailKit;
 using MimeKit;
@@ -54,6 +56,22 @@ public class ImapMailboxTests
     [InlineData("a(b)c*d\"e\\f%g", "a_b_c_d_e_f_g")]
     [InlineData("  spaced  ", "spaced")]
     [InlineData("", "_")]
+    // Reserved / system-like keywords are namespaced so a rule never sets a junk or system marker.
+    [InlineData("junk", "jev-junk")]
+    [InlineData("Junk", "jev-Junk")]
+    [InlineData("NonJunk", "jev-NonJunk")]
+    [InlineData("notjunk", "jev-notjunk")]
+    [InlineData("$Junk", "jev-Junk")]
+    [InlineData("$NotJunk", "jev-NotJunk")]
+    [InlineData("$Phishing", "jev-Phishing")]
+    [InlineData("$MDNSent", "jev-MDNSent")]
+    [InlineData("$Label1", "jev-Label1")]
+    [InlineData("$ Junk", "jev-_Junk")]
+    [InlineData("forwarded", "jev-forwarded")]
+    [InlineData("Phishing", "jev-Phishing")]
+    [InlineData("mdnsent", "jev-mdnsent")]
+    [InlineData("junk-mail", "junk-mail")]
+    [InlineData("jev-junk", "jev-junk")]
     public void Rule_names_map_to_imap_atoms(string name, string expected)
     {
         var keyword = ImapSupport.ToKeyword(name);
@@ -61,24 +79,55 @@ public class ImapMailboxTests
         Assert.True(ImapSupport.IsAtom(keyword));
     }
 
-    // ----- label diff -------------------------------------------------------
+    // ----- "already labelled" recognition ----------------------------------------
+
+    private static ImapMailbox Generic() =>
+        new(new MailAccount { Id = "i", Email = "x@example.org", Kind = AccountKind.Imap, Host = "mail.example.org" }, "pw");
+
+    private static ImapMailbox Gmail() =>
+        new(new MailAccount { Id = "g", Email = "x@gmail.com", Kind = AccountKind.Imap, Gmail = true, Host = "imap.gmail.com" }, "pw");
 
     [Fact]
-    public void Diff_adds_missing_removes_extra_and_ignores_system_labels()
+    public void Keyword_mailbox_recognises_rules_by_their_stored_keyword()
     {
-        var (add, remove) = ImapSupport.Diff(
-            current: ["\\Inbox", "\\Important", "newsletters", "Old-Label"],
-            desired: ["Newsletters", "action-required"]);
-        Assert.Equal(["action-required"], add);        // "newsletters" already there (case-insensitive)
-        Assert.Equal(["Old-Label"], remove);           // system labels untouched
+        using var mailbox = Generic();
+        LabelRule[] rules = [new("todo", "À traiter", "d", false), new("junk", "junk", "d", true)];
+
+        // Written by an earlier session: the keyword form of the rule name.
+        Assert.True(TriageEngine.HasConfiguredCategory(["\\Seen", "__traiter"], rules, mailbox.StoredLabel));
+        Assert.True(TriageEngine.HasConfiguredCategory(["JEV-JUNK"], rules, mailbox.StoredLabel));
+        // A client's junk verdict is not jevOutlook's "junk" rule.
+        Assert.False(TriageEngine.HasConfiguredCategory(["Junk"], rules, mailbox.StoredLabel));
+        Assert.False(TriageEngine.HasConfiguredCategory(["$Junk", "NonJunk"], rules, mailbox.StoredLabel));
+        Assert.Equal("__traiter", mailbox.StoredLabel("À traiter"));
     }
 
     [Fact]
-    public void Diff_is_a_no_op_when_labels_already_match()
+    public void Gmail_labels_are_stored_under_the_rule_name()
     {
-        var (add, remove) = ImapSupport.Diff(["\\Inbox", "newsletters"], ["newsletters", "\\Inbox"]);
-        Assert.Empty(add);
-        Assert.Empty(remove);
+        using var mailbox = Gmail();
+        Assert.Equal("À traiter", mailbox.StoredLabel("À traiter"));
+        Assert.Equal("junk", mailbox.StoredLabel("junk"));
+    }
+
+    // ----- label writes (add-only) ----------------------------------------------
+
+    [Fact]
+    public void Label_writes_only_add_the_missing_stored_label()
+    {
+        // A client set "NonJunk" and "$Forwarded", a filter added "Old" after the engine's re-read:
+        // the write adds the rule's stored keyword and nothing else (no re-mapping, no removal).
+        var add = ImapSupport.LabelsToAdd(
+            current: ["\\Seen", "NonJunk", "$Forwarded", "Old"],
+            desired: ["NonJunk", "$Forwarded", "jev-junk"]);
+        Assert.Equal(["jev-junk"], add);
+    }
+
+    [Fact]
+    public void Label_writes_skip_present_labels_and_system_labels()
+    {
+        Assert.Empty(ImapSupport.LabelsToAdd(["\\Inbox", "newsletters"], ["Newsletters", "\\Inbox", "\\Spam"]));
+        Assert.Equal(["action-required"], ImapSupport.LabelsToAdd(["\\Important"], ["action-required", "Action-Required"]));
     }
 
     // ----- metadata mapping ----------------------------------------------------

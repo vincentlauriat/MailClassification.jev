@@ -551,7 +551,7 @@ public static class Program
             throw new ArgumentException("Usage: jevoutlook cleanup remove-category <name> [--account <id>] [--dry-run] [--keep-master]");
         var category = args[1].Trim();
         var dryRun = args.Contains("--dry-run");
-        var mailbox = await MailboxFactory.OpenAsync(ResolveAccount(args), AppConfig.Load(), Http, ct);
+        await using var mailbox = await MailboxFactory.OpenAsync(ResolveAccount(args), AppConfig.Load(), Http, ct);
         await mailbox.ConnectAsync(ct);
 
         var total = 0;
@@ -565,9 +565,7 @@ public static class Program
                 Console.WriteLine($"{found.Count}{(found.Count == 100 ? "+" : string.Empty)} message(s) carry “{category}”. Nothing changed (dry run).");
                 return 0;
             }
-            var updates = found.Select(f => (f.Id, (IReadOnlyList<string>)f.Labels
-                .Where(c => !string.Equals(c, category, StringComparison.OrdinalIgnoreCase)).ToList())).ToList();
-            var outcome = await mailbox.ApplyLabelsAsync(updates, ct);
+            var outcome = await mailbox.RemoveLabelAsync(found, category, ct);
             if (!outcome.Ok) throw new InvalidOperationException(outcome.Error);
             total += found.Count;
             Console.WriteLine($"Removed “{category}” from {total} message(s)…");
@@ -623,9 +621,19 @@ public static class Program
         {
             ct.ThrowIfCancellationRequested();
             if (accounts.Count > 1) Console.WriteLine($"═══ {account.Email} ({account.ProviderLabel}) ═══");
-            var mailbox = await MailboxFactory.OpenAsync(account, config, Http, ct);
+            // Held for the whole run loop, released on exit, exception or Ctrl+C.
+            var store = new JobStore(account.Id);
+            using var jobLock = store.TryLock();
+            if (jobLock is null)
+            {
+                if (accounts.Count == 1) throw new InvalidOperationException(JobStore.LockedMessage);
+                Console.Error.WriteLine($"Skipped {account.Email}: {JobStore.LockedMessage}");
+                worst = Math.Max(worst, 1);
+                continue;
+            }
+            await using var mailbox = await MailboxFactory.OpenAsync(account, config, Http, ct);
             var sink = new ConsoleSink();
-            var engine = new TriageEngine(mailbox, new JobStore(account.Id), new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
+            var engine = new TriageEngine(mailbox, store, new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
 
             Console.WriteLine($"{(options.DryRun ? "PREVIEW" : "LIVE")} · {account.Email} · scope {options.Scope}{(options.UnreadOnly ? " (unread only)" : string.Empty)} · limit {(options.Limit is { } l ? l.ToString(CultureInfo.InvariantCulture) : "all")} · " +
                               $"{(options.Mode == RunMode.LabelsArchive ? "labels + archive" : "labels only")} · budget ${options.MaxSpendUsd.ToString("0.00", CultureInfo.InvariantCulture)} · model {config.ResolvedModel}");
@@ -649,9 +657,12 @@ public static class Program
             : (double?)null;
 
         var account = ResolveAccount(args);
-        var mailbox = await MailboxFactory.OpenAsync(account, config, Http, ct);
+        // Taken before Resume (which rewrites job.json) and held for the whole run loop.
+        var store = new JobStore(account.Id);
+        using var jobLock = store.Lock();
+        await using var mailbox = await MailboxFactory.OpenAsync(account, config, Http, ct);
         var sink = new ConsoleSink();
-        var engine = new TriageEngine(mailbox, new JobStore(account.Id), new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
+        var engine = new TriageEngine(mailbox, store, new JevClient(Http, config.ResolvedEndpoint, apiKey), config.ResolvedModel, sink);
         var job = engine.Resume(newSpend);
         Console.WriteLine($"Continuing session {job.Id} on {account.Email} ({(job.DryRun ? "PREVIEW" : "LIVE")}). Press Ctrl+C to pause safely.");
         await engine.RunLoopAsync(job, ct);
@@ -681,6 +692,7 @@ public static class Program
     {
         var account = ResolveAccount(args);
         var store = new JobStore(account.Id);
+        using var jobLock = store.Lock();
         var job = store.Load();
         if (job is { Status: JobStatus.Running }) throw new InvalidOperationException("Stop processing before clearing the session.");
         store.Delete();

@@ -42,6 +42,20 @@ public class RuleValidatorTests
         Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize([new LabelRule("a", "ok", "", false)]));
     }
 
+    [Theory]
+    [InlineData("A b", "A_b")]
+    [InlineData("À traiter", "__traiter")]
+    [InlineData("junk", "jev-junk")]
+    [InlineData("$Junk", "Jev-junk")]
+    public void Rejects_names_stored_as_the_same_imap_keyword(string first, string second)
+    {
+        var ex = Assert.Throws<RuleValidationException>(() => RuleValidator.ValidateAndNormalize(
+            [new LabelRule("a", first, "d", false), new LabelRule("b", second, "d", false)]));
+        Assert.Contains("IMAP keyword", ex.Message);
+        Assert.Contains(first, ex.Message);
+        Assert.Contains(second, ex.Message);
+    }
+
     [Fact]
     public void Regenerates_invalid_or_duplicate_ids_and_trims()
     {

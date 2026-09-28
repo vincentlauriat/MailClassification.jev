@@ -47,7 +47,7 @@ public class CursorPagingTests
         var collected = new List<PendingItem>();
         var page = new ListPage([Ref("a", 1, "newsletters"), Ref("b", 2), Ref("c", 3)], false);
         var rules = new List<LabelRule> { new("n", "Newsletters", "d", false) };
-        TriageEngine.ExaminePage(job, page, 10, r => !TriageEngine.HasConfiguredCategory(r.Labels, rules), collected);
+        TriageEngine.ExaminePage(job, page, 10, r => !TriageEngine.HasConfiguredCategory(r.Labels, rules, name => name), collected);
 
         Assert.Equal(["b", "c"], collected.Select(c => c.Id));
         Assert.Equal(Key(T0.AddSeconds(-3)), job.Cursor);

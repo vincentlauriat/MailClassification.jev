@@ -238,7 +238,7 @@ public sealed class TriageEngine
                 // A pending item with a final decision may already carry a configured category if
                 // an earlier grouped write partly succeeded before its checkpoint. Keep it and
                 // replay the idempotent write so counters can advance.
-                if (!job.DryRun && item.Final is null && HasConfiguredCategory(metadata.Categories, rules))
+                if (!job.DryRun && item.Final is null && HasConfiguredCategory(metadata.Categories, rules, _mailbox.StoredLabel))
                 {
                     RemovePending(job, item.Id);
                 }
@@ -526,7 +526,7 @@ public sealed class TriageEngine
         bool Eligible(MessageRef item) =>
             !(job.Scope == "all" && item.Excluded) &&
             !skippedLookup.Contains(item.Id) &&
-            !HasConfiguredCategory(item.Labels, rules);
+            !HasConfiguredCategory(item.Labels, rules, _mailbox.StoredLabel);
 
         while (collected.Count < wanted && !job.Exhausted && guard < MaxScanPagesPerBatch)
         {
@@ -604,9 +604,14 @@ public sealed class TriageEngine
     /// <summary>
     /// A message that already carries one of the configured categories was processed by an
     /// earlier run (or filed by hand): later runs skip it. Remove the category to reprocess.
+    /// <paramref name="storedLabel"/> maps a rule name to the label the mailbox stores
+    /// (<see cref="IMailbox.StoredLabel"/>: the IMAP keyword on generic IMAP).
     /// </summary>
-    internal static bool HasConfiguredCategory(IEnumerable<string> categories, IReadOnlyList<LabelRule> rules) =>
-        categories.Any(c => rules.Any(r => string.Equals(c, r.Name, StringComparison.OrdinalIgnoreCase)));
+    internal static bool HasConfiguredCategory(IEnumerable<string> categories, IReadOnlyList<LabelRule> rules, Func<string, string> storedLabel)
+    {
+        var stored = rules.Select(r => storedLabel(r.Name)).ToList();
+        return categories.Any(c => stored.Any(s => string.Equals(c, s, StringComparison.OrdinalIgnoreCase)));
+    }
 
     // =====================================================================
     // Adaptive mailbox reads
@@ -950,7 +955,7 @@ public sealed class TriageEngine
             if (gone.Contains(final.Item.Id)) continue;
             var existing = currentCategories.TryGetValue(final.Item.Id, out var current) ? current
                 : metadataById.TryGetValue(final.Item.Id, out var metadata) ? metadata.Categories : [];
-            var categoryName = categoryNames.GetValueOrDefault(final.Rule.Name.ToLowerInvariant(), final.Rule.Name);
+            var categoryName = categoryNames.GetValueOrDefault(final.Rule.Name.ToLowerInvariant(), _mailbox.StoredLabel(final.Rule.Name));
             var merged = new List<string>(existing);
             if (!merged.Any(c => string.Equals(c, categoryName, StringComparison.OrdinalIgnoreCase))) merged.Add(categoryName);
             updates.Add((final.Item.Id, merged));

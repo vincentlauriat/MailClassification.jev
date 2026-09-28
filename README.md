@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
-[![Tests](https://img.shields.io/badge/tests-88%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
+[![Tests](https://img.shields.io/badge/tests-114%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
 [![Landing page](https://img.shields.io/badge/site-vincentlauriat.github.io-0f6cbd.svg)](https://vincentlauriat.github.io/MailClassification.jev/)
 [![Outlook add-in guide](https://img.shields.io/badge/Outlook%20add--in-guide-0f6cbd.svg)](docs/ADDIN.md)
 
@@ -322,7 +322,20 @@ from the start; any other port tries STARTTLS.
 Your categories become IMAP **keywords** (custom flags on the message, shown by clients
 such as Thunderbird, Apple Mail and Roundcube). The server has to allow custom keywords:
 Dovecot, Cyrus and Courier do; if yours does not, jevOutlook says so at the first live run
-and writes nothing. Archiving moves the message to an `Archive` folder (the server's
+and writes nothing.
+
+How a category name becomes a keyword:
+
+- A plain name (letters, digits, `-`, `_`, `.`…) is used as is: `newsletters` stays `newsletters`.
+- Spaces and the characters IMAP forbids in a keyword (`( ) { " \ % * [ ]`, and anything
+  outside ASCII) become `_`: `Cold outreach` → `Cold_outreach`, `À traiter` → `__traiter`.
+- Names that mail clients and spam filters already give a meaning to are stored under a
+  `jev-` prefix, so jevOutlook never marks a message as junk or changes its state:
+  `junk`, `nonjunk`, `notjunk`, `forwarded`, `phishing`, `mdnsent` (any case), and every
+  name starting with `$` (`$Junk` → `jev-Junk`). The default playbook's `junk` category
+  is therefore the keyword `jev-junk` on these mailboxes.
+- Keywords are only ever added: jevOutlook never removes a keyword another client or a
+  server filter set. The only command that removes one is `cleanup remove-category`. Archiving moves the message to an `Archive` folder (the server's
 special-use folder when it declares one, otherwise created).
 
 **Check any mailbox**
@@ -460,7 +473,10 @@ A rule is four fields:
 
 - `name` is what gets written to the message (Outlook category, Gmail label, IMAP keyword).
   It cannot contain `,` or `;`. For IMAP keywords keep it to letters, digits, `-` and `_`
-  (the playbook names already are).
+  (the playbook names already are): other characters become `_`, and reserved names such
+  as `junk` or `$…` get a `jev-` prefix (see [§6.4](#64-any-other-imap-mailbox)). Two names
+  that would give the same keyword (`A b` and `A_b`, `junk` and `jev-junk`) are rejected,
+  because rules are shared by every mailbox.
 - `description` is the **criterion sent to Jev verbatim**. Write it like the examples:
   what belongs, then what is explicitly excluded.
 - `spam: true` marks the category **archive eligible**. Nothing else changes for it.
@@ -617,6 +633,7 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
     auth-record.json     Microsoft sign-in record (no token inside; tokens live in the OS cache)
     job.json             the current session: options, cursor, counters, spend, checkpointed decisions
     job-rules.json       the rules frozen for that session
+    job.lock             held while a session is processed (dashboard or CLI); empty, never deleted
   logs/ui.log            output of the LaunchAgent (jevoutlook service install)
   bin/                   suggested location of the published executable used by the agent
 
@@ -639,6 +656,7 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
 | **Run pauses with "temporarily rate-limiting or unavailable"** | Microsoft Graph or the IMAP server throttled or dropped the connection after the retries. Every decision is saved: wait a minute and `jevoutlook continue`. With `JEVOUTLOOK_DEBUG=1` the exact HTTP status and `Retry-After` are printed. |
 | **Gmail refuses the password** | It must be a 16-character **app password**, not the account password, and 2-step verification must be on. Store a new one: `jevoutlook account password <id>`. |
 | **"This IMAP server does not accept custom keywords"** | The server does not advertise `PERMANENTFLAGS \*`. jevOutlook cannot label messages there; it writes nothing. |
+| **"Another jevOutlook process is processing this mailbox right now (dashboard or CLI)"** | One session per mailbox runs at a time: the dashboard (always on with the LaunchAgent) or a `run` / `continue` in a terminal holds `accounts/<id>/job.lock`. Wait for that batch or run to finish, or stop it (Ctrl+C in the terminal, **Stop processing** in the dashboard), then retry. The lock is released automatically when the holding process stops, even if it crashed. |
 | **"The mailbox was rebuilt (UIDVALIDITY changed)"** | The IMAP server renumbered the folder; the session cursor is meaningless. `jevoutlook clear-job --account <id>` and start again. |
 | **"Microsoft sign-in is required or has expired"** | `jevoutlook account login <id>`. |
 | **Same messages keep coming back in preview** | Expected: preview writes nothing, so nothing marks them as processed. In live mode they carry your category and are skipped. |
@@ -686,10 +704,10 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
 | --- | --- |
 | Language / runtime | C# 13, .NET 10; one executable that is both the CLI and the local dashboard (ASP.NET Core minimal API on 127.0.0.1) |
 | Microsoft mailboxes | Microsoft Graph v1.0 REST over `HttpClient` (no SDK): `$batch` reads, category `PATCH`, archive `move`; sign-in with `Azure.Identity` |
-| Gmail / IMAP mailboxes | [MailKit](https://github.com/jstedfast/MailKit): UID cursor, `X-GM-LABELS` for Gmail, keywords (`STORE ±FLAGS`) elsewhere |
+| Gmail / IMAP mailboxes | [MailKit](https://github.com/jstedfast/MailKit): UID cursor, `X-GM-LABELS` for Gmail, keywords elsewhere; label writes are add-only (`STORE +X-GM-LABELS` / `+FLAGS`), removal only in `cleanup` |
 | Model | Jev `~typesafe/jev-latest` through OpenRouter's Decisions API (or TypeSafe's API directly); strict validation of the answer contract |
 | Engine | Provider-agnostic `TriageEngine` behind an `IMailbox` interface: batches of 50, two concurrent waves, adaptive concurrency, budget reservation, circuit breaker, grouped idempotent writes |
-| Tests | 88 xUnit tests on the pure logic: rules, payload, answer parsing, text extraction, cursor paging, IMAP helpers, add-in manifest, LaunchAgent plist, origin allowlist, add-in archive rule |
+| Tests | 114 xUnit tests on the pure logic: rules, payload, answer parsing, text extraction, cursor paging, IMAP helpers (keyword mapping, add-only writes, "already labelled" recognition), per-account job lock, add-in manifest, LaunchAgent plist, origin allowlist, add-in archive rule |
 
 ```
 src/JevOutlook/

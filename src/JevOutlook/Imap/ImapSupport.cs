@@ -8,7 +8,7 @@ namespace JevOutlook.Imap;
 
 /// <summary>
 /// Pure helpers behind <see cref="ImapMailbox"/>: cursor / id encoding, keyword
-/// mapping, label diffs and MIME → <see cref="MessageMetadata"/> mapping. No I/O,
+/// mapping, add-only label writes and MIME → <see cref="MessageMetadata"/> mapping. No I/O,
 /// so everything here is unit-testable without a server.
 /// </summary>
 public static class ImapSupport
@@ -52,11 +52,29 @@ public static class ImapSupport
 
     // ----- Keywords (generic IMAP) ------------------------------------------------
 
+    /// <summary>Prefix of the namespaced form given to reserved keyword names.</summary>
+    public const string ReservedKeywordPrefix = "jev-";
+
+    /// <summary>
+    /// Keyword names that mail clients and servers give a meaning to. Thunderbird, Apple Mail
+    /// and server-side antispam learners read <c>Junk</c> / <c>$Junk</c> / <c>NonJunk</c> /
+    /// <c>$NotJunk</c> as the junk verdict (keywords compare case-insensitively), and
+    /// <c>$Forwarded</c>, <c>$MDNSent</c>, <c>$Phishing</c>… as message state. jevOutlook never
+    /// marks mail as junk or changes such state, so a rule with one of these names is stored under
+    /// <see cref="ReservedKeywordPrefix"/> instead. Every name starting with '$' (the IANA keyword
+    /// registry's system-like range: $Label1..5, $Important, $Submitted…) is reserved as well.
+    /// </summary>
+    private static readonly HashSet<string> ReservedKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "junk", "nonjunk", "notjunk", "forwarded", "phishing", "mdnsent",
+    };
+
     /// <summary>
     /// IMAP keywords are atoms: no spaces, parentheses, braces, quotes, backslashes,
-    /// '%', '*' or control characters. Rule names that already are atoms are used
-    /// verbatim (so the engine's name comparison keeps matching); anything else is
-    /// mapped character by character to '_'.
+    /// '%', '*' or control characters. Ordinary rule names that already are atoms are used
+    /// verbatim (readable in mail clients); other characters are mapped to '_'. Reserved
+    /// names (see <see cref="ReservedKeywords"/>) become <c>jev-&lt;name&gt;</c>, without the
+    /// leading '$'. The mapping is idempotent: a keyword it produced maps to itself.
     /// </summary>
     public static string ToKeyword(string name)
     {
@@ -67,7 +85,10 @@ public static class ImapSupport
         {
             sb.Append(IsAtomChar(c) ? c : '_');
         }
-        return sb.ToString();
+        var atom = sb.ToString();
+        if (!atom.StartsWith('$') && !ReservedKeywords.Contains(atom)) return atom;
+        var core = atom.TrimStart('$');
+        return ReservedKeywordPrefix + (core.Length == 0 ? "_" : core);
     }
 
     public static bool IsAtom(string name) => name.Length > 0 && name.All(IsAtomChar);
@@ -75,20 +96,25 @@ public static class ImapSupport
     private static bool IsAtomChar(char c) =>
         c > ' ' && c < (char)127 && c is not ('(' or ')' or '{' or '"' or '\\' or '%' or '*' or ']' or '[');
 
-    // ----- Label diffs ------------------------------------------------------------
+    // ----- Label writes ------------------------------------------------------------
 
     /// <summary>
-    /// What to add and what to remove so that the message carries exactly
-    /// <paramref name="desired"/> among user labels. System labels (starting
-    /// with '\', e.g. Gmail's \Inbox, \Important) are never touched.
+    /// Labels of <paramref name="desired"/> the message does not carry yet (case-insensitive).
+    /// Label writes are add-only: a label present on the message but absent from
+    /// <paramref name="desired"/> may have been added a moment ago by a Gmail filter or another
+    /// client, so it is never removed here (removal is the explicit cleanup path). Labels are in
+    /// stored form (Gmail label / IMAP keyword) and are not re-mapped: a keyword a client set,
+    /// such as "$Forwarded", must not turn into a new one. System labels (starting with '\',
+    /// e.g. Gmail's \Inbox, \Spam) are never added.
     /// </summary>
-    public static (List<string> Add, List<string> Remove) Diff(IEnumerable<string> current, IEnumerable<string> desired)
+    public static List<string> LabelsToAdd(IEnumerable<string> current, IEnumerable<string> desired)
     {
-        var have = current.Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith('\\')).ToList();
-        var want = desired.Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith('\\')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var add = want.Where(w => !have.Any(h => string.Equals(h, w, StringComparison.OrdinalIgnoreCase))).ToList();
-        var remove = have.Where(h => !want.Any(w => string.Equals(h, w, StringComparison.OrdinalIgnoreCase))).ToList();
-        return (add, remove);
+        var have = current.Where(l => !string.IsNullOrEmpty(l)).ToList();
+        return desired
+            .Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith('\\'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(w => !have.Any(h => string.Equals(h, w, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
     }
 
     // ----- MIME → metadata --------------------------------------------------------

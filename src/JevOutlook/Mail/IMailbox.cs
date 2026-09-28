@@ -54,8 +54,10 @@ public sealed record MailboxCapabilities(string ProviderName, string LabelNoun, 
 /// The exact mailbox surface the triage engine needs, so Outlook (Graph), Gmail
 /// (IMAP + X-GM-LABELS) and generic IMAP (keywords) are interchangeable.
 /// Message ids and cursors are opaque strings owned by the provider.
+/// Disposable: IMAP holds a live connection (Gmail caps simultaneous IMAP connections at 15),
+/// so a long-running host disposes every mailbox it opens; Graph disposal is a no-op.
 /// </summary>
-public interface IMailbox
+public interface IMailbox : IAsyncDisposable
 {
     MailboxCapabilities Capabilities { get; }
 
@@ -77,11 +79,30 @@ public interface IMailbox
     /// <summary>Read many messages; result order matches <paramref name="ids"/>.</summary>
     Task<List<ReadPart>> ReadMessagesAsync(IReadOnlyList<string> ids, ReadMode mode, CancellationToken ct);
 
+    /// <summary>
+    /// The label a rule name is stored as on this mailbox: the name itself for Outlook categories
+    /// and Gmail labels, the IMAP keyword for generic IMAP. "Already labelled" checks compare a
+    /// message's labels with this, case-insensitively.
+    /// </summary>
+    string StoredLabel(string ruleName);
+
     /// <summary>Make sure every label exists (with a colour where the provider has one). Returns canonical names keyed by lower-case name.</summary>
     Task<Dictionary<string, string>> EnsureLabelsAsync(IReadOnlyList<string> names, CancellationToken ct);
 
-    /// <summary>Replace the label set of each message (idempotent; a vanished message counts as done).</summary>
+    /// <summary>
+    /// Make each message carry the given labels (idempotent; a vanished message counts as done).
+    /// Labels are in stored form (the canonical names returned by <see cref="EnsureLabelsAsync"/>
+    /// plus the labels already on the message). Graph replaces the category collection with this
+    /// merged set; IMAP/Gmail only add the missing labels and never remove one.
+    /// </summary>
     Task<WriteOutcome> ApplyLabelsAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Labels)> updates, CancellationToken ct);
+
+    /// <summary>
+    /// Remove one label from each message (explicit cleanup, the only path that removes a label;
+    /// idempotent). <paramref name="messages"/> are the ids and current labels returned by
+    /// <see cref="FindMessagesWithLabelAsync"/>.
+    /// </summary>
+    Task<WriteOutcome> RemoveLabelAsync(IReadOnlyList<(string Id, IReadOnlyList<string> Labels)> messages, string label, CancellationToken ct);
 
     /// <summary>Archive messages (provider-specific: move to Archive, remove from Inbox…). Idempotent.</summary>
     Task<WriteOutcome> ArchiveAsync(IReadOnlyList<string> ids, CancellationToken ct);

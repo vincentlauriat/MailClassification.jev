@@ -39,19 +39,19 @@ Web/UiServer  ──┼─► Triage/TriageEngine ─► Mail/IMailbox ┤
 | Module | Responsibility |
 | --- | --- |
 | `AppConstants` | All tunables (concurrency windows, retry delays, thresholds, defaults) |
-| `Rules/*` | `LabelRule` record, 7 playbooks (identical to jevMail), validation (≤12 rules, no `,`/`;`, id regeneration) |
-| `Mail/IMailbox` | The exact mailbox surface the engine needs: identity, capabilities, estimate, cursor listing, batched reads (`ReadPart`), `EnsureLabels`, `ApplyLabels`, `Archive`, label cleanup. Ids and cursors are opaque strings owned by the provider; `MailboxException(transient)` drives pause vs. error |
+| `Rules/*` | `LabelRule` record, 7 playbooks (identical to jevMail), validation (≤12 rules, no `,`/`;`, no two names mapping to the same IMAP keyword, id regeneration) |
+| `Mail/IMailbox` | The exact mailbox surface the engine needs: identity, capabilities, estimate, cursor listing, batched reads (`ReadPart`), `StoredLabel` (rule name → stored label), `EnsureLabels`, `ApplyLabels`, `Archive`, label cleanup (`FindMessagesWithLabel`, `RemoveLabel`, `DeleteLabel`). Ids and cursors are opaque strings owned by the provider; `MailboxException(transient)` drives pause vs. error. `IAsyncDisposable`: an IMAP mailbox holds a live connection, Graph disposal is a no-op |
 | `Mail/MailboxFactory` | Opens the right provider for a `MailAccount` (Graph: saved sign-in record; IMAP: password from the secret store); interactive Microsoft sign-in; readiness check |
 | `Mail/MessageMetadata`, `MessageContent` | The flat `email` object sent to Jev (built from Graph JSON or IMAP envelope/headers); HTML→text; head/tail compaction |
-| `Storage/*` | Paths, atomic JSON writes with 0600, `AppConfig` (global), `RuleStore` (global rules), `AccountStore` (`accounts.json`), `SecretStore`, `JobStore` (one per account: job + frozen rules) |
+| `Storage/*` | Paths, atomic JSON writes with 0600, `AppConfig` (global), `RuleStore` (global rules), `AccountStore` (`accounts.json`), `SecretStore`, `JobStore` (one per account: job + frozen rules + the `job.lock` cross-process lock) |
 | `Graph/GraphAuth` | Credential per account (tenant override), device-code / browser sign-in, record persistence under `accounts/<id>/`, legacy single-mailbox migration |
 | `Graph/GraphMailClient` | `IMailbox` over Graph: `receivedDateTime` cursor listing, `$batch` reads, master categories (colour presets), category PATCH, archive move, throttling handling |
-| `Imap/ImapMailbox` | `IMailbox` over MailKit: UID cursor listing, envelope/header fetch, Gmail labels or IMAP keywords, archive (All Mail / Archive folder), one serialised connection with reconnect |
+| `Imap/ImapMailbox` | `IMailbox` over MailKit: UID cursor listing, envelope/header fetch, Gmail labels or IMAP keywords (add-only writes; `ImapSupport.ToKeyword` maps names, reserved ones to `jev-…`), archive (All Mail / Archive folder), one serialised connection with reconnect, closed on dispose |
 | `Jev/JevPayloadBuilder` | Builds the Choice question (options `L0..Ln`), size guard (29 000 bytes), cost estimate |
 | `Jev/JevClient` | Sends one Decisions request; strict contract validation; cost accounting source |
 | `Triage/TriageEngine` | Session lifecycle, batches, two waves, adaptive concurrency, budget, circuit breaker, grouped writes — provider-agnostic |
 | `Cli/*` | `account` commands, `--account` / `--all-accounts`, run/continue/status, terminal rendering, hidden password prompt; `ServiceCommand` (`service install/status/restart/uninstall`, macOS LaunchAgent, see §10) |
-| `Web/UiServer` | Local dashboard (ASP.NET Core minimal API on 127.0.0.1): serves the embedded page and exposes jevMail's server functions as `POST /api/{function}` (args as JSON array) plus `addAccount` / `removeAccount` / `testAccount`; one engine and one device-code sign-in state per account. `GET /health` → `{app, version, https}` identifies a running jevOutlook (single instance, `service status`); `AllowedOrigins(port, httpsPort)` is the one place that builds the Host/Origin allowlists |
+| `Web/UiServer` | Local dashboard (ASP.NET Core minimal API on 127.0.0.1): serves the embedded page and exposes jevMail's server functions as `POST /api/{function}` (args as JSON array) plus `addAccount` / `removeAccount` / `testAccount`; one engine and one device-code sign-in state per account. Engines live in a `ConcurrentDictionary`; a replaced or evicted engine's mailbox is disposed, and one-shot mailboxes (add-account probe, `testAccount`, `authStatus`, `classifyItem`, `applyItem`) are `await using`, so no IMAP connection leaks (Gmail caps simultaneous IMAP connections at 15). Job calls (`startTriageJob`, `processNextBatch`, `resumeTriageJob`, `cancelTriageJob`, `clearFinishedJob`) run under the in-process `_jobLock` and try-acquire the account's `job.lock`; `signOut` runs under `_jobLock` because it may dispose an IMAP mailbox. `GET /health` → `{app, version, https}` identifies a running jevOutlook (single instance, `service status`); `AllowedOrigins(port, httpsPort)` is the one place that builds the Host/Origin allowlists |
 | `Web/wwwroot/*` | `index.html` + `style.css` adapted from jevMail (MIT): a bridge emulates `google.script.run` over `fetch`; Mailboxes card (chips, add/test/sign-in/remove, "Run all mailboxes" queue); `taskpane.html` (Office.js) and icons for the Outlook add-in |
 | Outlook add-in | Classic XML manifest served at `/manifest.xml`; the pane is served by the local server over HTTPS, which the LaunchAgent (§10) keeps running. One work tenant refused the sideload (generic "installation failed" although the manifest passes Microsoft's validator): tenants that disable custom add-ins still block it. An empty account id in the API resolves to the first ready Microsoft mailbox |
 
@@ -59,9 +59,9 @@ Web/UiServer  ──┼─► Triage/TriageEngine ─► Mail/IMailbox ┤
 
 | Concept | Outlook (Graph) | Gmail (IMAP) | Generic IMAP (e.g. Dovecot) |
 | --- | --- | --- | --- |
-| Label | Master category (`POST /me/outlook/masterCategories` with a colour) + `PATCH /me/messages/{id}` `{categories}` (full replacement → existing categories merged, never dropped) | Gmail label (a folder under the personal namespace, created if missing) applied with `X-GM-LABELS` (`AddLabels` / `RemoveLabels`) | IMAP keyword (custom flag) set with `STORE +FLAGS` when the folder advertises `PERMANENTFLAGS \*`; otherwise labelling fails closed with a clear message |
+| Label | Master category (`POST /me/outlook/masterCategories` with a colour) + `PATCH /me/messages/{id}` `{categories}` (full replacement → existing categories merged, never dropped) | Gmail label (a folder under the personal namespace, created if missing, named after the rule) added with `STORE +X-GM-LABELS`; never removed by a run (only `cleanup remove-category`, `-X-GM-LABELS`). Gmail's spam is the system label `\Spam`: a rule's label is a user folder under the personal namespace, and the writer never adds a `\…` label (`ImapSupport.LabelsToAdd`) | IMAP keyword (custom flag) added with `STORE +FLAGS` when the folder advertises `PERMANENTFLAGS \*`; otherwise labelling fails closed with a clear message. Name → keyword (`ImapSupport.ToKeyword`): atoms verbatim, other characters `_`, reserved names (`junk`, `nonjunk`, `notjunk`, `forwarded`, `phishing`, `mdnsent`, any `$…`, case-insensitive) → `jev-<name>` so a run never sets a client's junk or state marker. Never removed by a run (only `cleanup`, `-FLAGS`) |
 | Archive | `POST /me/messages/{id}/move` `{destinationId:"archive"}` | Move Inbox → `[Gmail]/All Mail` (= remove the Inbox label; the message stays in All Mail) | Move to the `Archive` folder (special-use or created) |
-| Marker | none: "already processed" = carries one of the configured labels | same | same |
+| Marker | none: "already processed" = carries one of the configured labels | same | same, compared with each rule's stored keyword (`StoredLabel`), case-insensitively |
 | Scope `inbox` / `all` | `/me/mailFolders/inbox/messages` / `/me/messages` with client-side exclusion of Junk, Deleted Items, Drafts | `INBOX` / `[Gmail]/All Mail` | `INBOX` only (`SupportsAllScope=false`, refused at start) |
 | Unread | `isRead eq false` | `NOT SEEN` | `NOT SEEN` |
 | Message id | Graph id (changes on move → 404 on replay handled) | `scope:uidvalidity:uid` | same |
@@ -103,7 +103,10 @@ token, archiving messages out of the Inbox mid-run never shifts pages.
 7. **Ready prefix**: leading pending items with a final decision are written in two grouped
    idempotent passes — the current labels of each message are **re-read in the same moment**
    (a replacement write and a minutes-old snapshot would clobber user changes), then
-   `ApplyLabels` (current ∪ {label}), then `Archive` for archive decisions. A transient
+   `ApplyLabels` (current ∪ {label}), then `Archive` for archive decisions. Graph PATCHes that
+   merged set (a full replacement, so the re-read matters); IMAP/Gmail only add the missing
+   label (`ImapSupport.LabelsToAdd`) and never remove one, so a label set by a filter or another
+   client between the re-read and the write survives. A transient
    mailbox failure pauses the session with every decision saved. On replay, a pending item
    that already has a final decision but is no longer found (its id changed because the
    archive move succeeded before the checkpoint) is counted as processed, not skipped.
@@ -135,6 +138,7 @@ token, archiving messages out of the Inbox mid-run never shifts pages.
 | Ctrl+C during a wave | Reservations of unanswered requests are released; they are re-dispatched on resume |
 | Budget would be exceeded | Status `budget`; `continue --max-spend` to raise |
 | Ctrl+C | Pause `user-stop`; `continue` resumes (and re-arms the circuit breaker) |
+| Another process holds the account's `job.lock` (dashboard batch vs. CLI `run`/`continue`) | Refused before any change: "Another jevOutlook process is processing this mailbox right now (dashboard or CLI). Wait for it or stop it, then retry." `run --all-accounts` skips that mailbox (exit 1) |
 
 ## 7. Persistence
 
@@ -148,6 +152,7 @@ token, archiving messages out of the Inbox mid-run never shifts pages.
     auth-record.json     MSAL AuthenticationRecord (Microsoft mailboxes; tokens live in the OS cache)
     job.json             current session: options, cursor (sort key), counters, spend, pending items with decisions
     job-rules.json       rules frozen for the current session
+    job.lock             exclusive lock (FileStream + FileShare.None = advisory flock on Unix); never deleted
   logs/ui.log            stdout/stderr of the LaunchAgent
 ~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist   LaunchAgent (macOS), no secret
 ```
@@ -156,6 +161,13 @@ token, archiving messages out of the Inbox mid-run never shifts pages.
 files are written atomically (`.tmp` + move) with mode 0600; directories are 0700. The
 pre-multi-account layout (`auth-record.json`, `job.json` at the root) is migrated once into an
 account entry on first start; the old session is dropped because its cursor type changed.
+
+**One processor per session.** `job.lock` is held by the CLI for the whole `run` / `continue` loop (and
+`clear-job`), and try-acquired (non-blocking) by the dashboard for each job call. Without it, the always-on
+dashboard and a terminal `continue` could process the same `Running` session at once: both would pay for the same
+messages and overwrite each other's `SpentUsd` (up to about twice the cap) and status (a cancel lost). The lock is
+per open file description, so a second open fails even inside the same process; the kernel releases it when the
+holder exits or crashes, and `using` releases it on exceptions and cancellation.
 
 ## 8. Security notes
 
@@ -193,6 +205,10 @@ account entry on first start; the old session is dropped because its cursor type
   contents, secret exclusion, XML escaping, `plutil -lint`, origin allowlist, `/health` body recognition).
 - 2026-09-28: 88 tests pass (+9: the add-in's single-message rule — body review for an archive-eligible label below
   0.93, and "Apply + archive" offered only at 0.93, the batch run's archive threshold).
+- 2026-09-28: 114 tests pass (+26 net: 28 new, 2 retired `Diff` tests), `dotnet build -c Release` 0 warnings, 0 errors: reserved
+  IMAP keyword mapping, add-only label writes, keyword-based "already labelled" recognition and collision validation,
+  `IMailbox` disposal (Graph no-op), per-account `job.lock` (same-process refusal, release on exception). A second
+  process was checked by hand: refused while held (also by `flock(LOCK_NB)`), acquired once the holder exited.
 
 ## 10. Keeping the server running (macOS LaunchAgent)
 
