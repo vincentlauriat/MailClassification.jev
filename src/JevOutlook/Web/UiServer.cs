@@ -829,7 +829,7 @@ public sealed class UiServer
         var final = first;
         var finalStage = "metadata";
 
-        if (first.Confidence < AppConstants.DefaultMetadataThreshold)
+        if (NeedsFullReview(RuleValidator.ById(rules, first.RuleId)?.Spam == true, first.Confidence))
         {
             var fullParts = await mailbox.ReadMessagesAsync([itemId], ReadMode.Full, ct);
             if (fullParts[0].Ok)
@@ -855,10 +855,22 @@ public sealed class UiServer
             categories = metadata.Categories,
             alreadyTriaged = TriageEngine.HasConfiguredCategory(metadata.Categories, rules),
             stages,
-            final = new { ruleId = rule.Id, label = rule.Name, spam = rule.Spam, confidence = final.Confidence, stage = finalStage, probabilities = ((dynamic)stages[^1]).probabilities },
+            final = new { ruleId = rule.Id, label = rule.Name, spam = rule.Spam, archivable = CanArchive(rule.Spam, final.Confidence), archiveThreshold = AppConstants.DefaultArchiveThreshold, confidence = final.Confidence, stage = finalStage, probabilities = ((dynamic)stages[^1]).probabilities },
             costUsd = cost,
         };
     }
+
+    /// <summary>
+    /// Same escalation rule as a batch run in archive mode: read the body when the metadata
+    /// pass is unsure, or when an archive-eligible category lacks the archive confidence.
+    /// </summary>
+    internal static bool NeedsFullReview(bool archiveEligible, double confidence) =>
+        confidence < AppConstants.DefaultMetadataThreshold ||
+        (archiveEligible && confidence < AppConstants.DefaultArchiveThreshold);
+
+    /// <summary>The pane offers "Apply + archive" only under the batch run's archive rule.</summary>
+    internal static bool CanArchive(bool archiveEligible, double confidence) =>
+        archiveEligible && confidence >= AppConstants.DefaultArchiveThreshold;
 
     /// <summary>Apply one decision to one message: merge the label, optionally archive.</summary>
     private async Task<object?> ApplyItemAsync(string itemId, string ruleId, bool archive, string accountId, CancellationToken ct)

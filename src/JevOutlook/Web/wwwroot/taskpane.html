@@ -154,8 +154,9 @@
           track.appendChild(fill);
           bars.appendChild(name); bars.appendChild(pct); bars.appendChild(track);
         });
-        el('archiveBtn').hidden = !res.final.spam;
-        el('resNote').textContent = res.alreadyTriaged ? 'This message already carries a configured category (' + res.categories.join(', ') + '). Applying adds the new one without removing existing categories.' : 'Nothing is changed in Outlook until you click Apply.';
+        // Same rule as a batch run: archive only an eligible category at the archive confidence.
+        el('archiveBtn').hidden = !res.final.archivable;
+        el('resNote').textContent = (res.final.spam && !res.final.archivable) ? 'Archive-eligible category, but the confidence is below ' + res.final.archiveThreshold + ': archiving is not offered.' : res.alreadyTriaged ? 'This message already carries a configured category (' + res.categories.join(', ') + '). Applying adds the new one without removing existing categories.' : 'Nothing is changed in Outlook until you click Apply.';
         el('result').hidden = false;
         say('itemMsg', 'Cost $' + res.costUsd.toFixed(6) + (res.stages.length > 1 ? ' · metadata was uncertain, the body was reviewed too.' : ''), 'ok');
       }).catch(function(e) { say('itemMsg', e.message, 'error'); }).finally(function() { el('classifyBtn').disabled = false; });
