@@ -6,6 +6,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
 [![Tests](https://img.shields.io/badge/tests-79%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
 [![Landing page](https://img.shields.io/badge/site-vincentlauriat.github.io-0f6cbd.svg)](https://vincentlauriat.github.io/MailClassification.jev/)
+[![Outlook add-in guide](https://img.shields.io/badge/Outlook%20add--in-guide-0f6cbd.svg)](docs/ADDIN.md)
 
 jevOutlook reads the messages of one or several mailboxes, asks **Jev** (TypeSafe's
 System One decision model, reached through OpenRouter) which of *your* categories each
@@ -38,7 +39,7 @@ is optional, separately gated, and off by default.
    - [6.3 Gmail mailboxes](#63-gmail-mailboxes)
    - [6.4 Any other IMAP mailbox](#64-any-other-imap-mailbox)
    - [6.5 Keep the dashboard running (macOS)](#65-keep-the-dashboard-running-macos)
-   - [6.6 The Outlook add-in (Microsoft 365)](#66-the-outlook-add-in-microsoft-365)
+   - [6.6 The Outlook add-in (Microsoft 365)](#66-the-outlook-add-in-microsoft-365) — full guide: [docs/ADDIN.md](docs/ADDIN.md)
 7. [Your first run (preview)](#7-your-first-run-preview)
 8. [Going live: categories, then archiving](#8-going-live-categories-then-archiving)
 9. [Categories: playbooks and your own rules](#9-categories-playbooks-and-your-own-rules)
@@ -366,19 +367,25 @@ jevoutlook service uninstall   # stop the agent and remove it
 ### 6.6 The Outlook add-in (Microsoft 365)
 
 A task pane inside Outlook classifies the message you are reading and applies the category
-(or category + archive) in one click. The pane is served by the local server over HTTPS, so
-it needs the ASP.NET development certificate and a running server
-([§6.5](#65-keep-the-dashboard-running-macos) keeps it up):
+(or category + archive) in one click; it can also run a preview-first batch on the Inbox.
+The pane is served by the local server over HTTPS, so it needs the ASP.NET development
+certificate and a running server ([§6.5](#65-keep-the-dashboard-running-macos) keeps it up
+on macOS):
 
 ```bash
 dotnet dev-certs https --trust          # once
-jevoutlook addin manifest               # writes release/jevoutlook-manifest.xml
+jevoutlook addin manifest               # writes release/jevoutlook-manifest.xml (under the current directory)
 ```
 
-In Outlook: **Get Add-ins → My add-ins → Add a custom add-in → Add from file**, then pick the
-manifest. The pane uses the first signed-in Microsoft 365 mailbox and the stored API key.
-Some organisations disable custom add-ins; the sideload then fails with a generic
-"installation failed" and only the tenant administrator can change that.
+Then sideload the manifest in Outlook (**My add-ins → Custom add-ins → Add from file**).
+Microsoft 365 and Outlook.com mailboxes only; the pane uses the first signed-in Microsoft 365
+mailbox and the stored API key. Some organisations disable custom add-ins; only the tenant
+administrator can change that.
+
+**Everything else — requirements, per-client sideloading, Windows/Linux, updating,
+uninstalling, security and troubleshooting — is in the add-in guide:
+[docs/ADDIN.md](docs/ADDIN.md)** (web version:
+<https://vincentlauriat.github.io/MailClassification.jev/addin/>).
 
 ## 7. Your first run (preview)
 

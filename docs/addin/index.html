@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jevOutlook Outlook add-in — classify the message you are reading with Jev</title>
+<meta name="description" content="The jevOutlook Outlook add-in: a task pane that classifies the message you are reading with Jev (TypeSafe) and applies one Outlook category in a click. Served by the jevOutlook server on your own computer, for Microsoft 365 and Outlook.com mailboxes. Install guide, sideloading per Outlook client, troubleshooting.">
+<meta property="og:title" content="jevOutlook for Outlook — classify the message you are reading">
+<meta property="og:description" content="A task pane in Outlook: Jev picks one of your categories with a confidence, you apply it in one click. Runs on your machine. Free and open source.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://vincentlauriat.github.io/MailClassification.jev/addin/">
+<meta property="og:image" content="https://vincentlauriat.github.io/MailClassification.jev/assets/icon-1024.png">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#0d0e11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/svg+xml" href="../assets/icon.svg">
+<link rel="apple-touch-icon" href="../assets/icon-256.png">
+<link rel="canonical" href="https://vincentlauriat.github.io/MailClassification.jev/addin/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+  /* Same palette and layout as the landing page (docs/index.html): base.css only
+     sets the dark tokens, so the light mode redefines the whole palette here. */
+  :root{
+    --bg:#0d0e11; --bg-lift:#121318; --surface:#16181f; --surface-2:#1c1f28;
+    --line:#292d3a; --line-soft:#1f222d;
+    --txt:#e9ebf2; --muted:#9298ab; --faint:#767d92;
+    --accent:#5aa9ff; --accent-soft:rgba(90,169,255,.15); --accent-line:rgba(90,169,255,.34);
+    --hi:#a78bfa;
+    --warn:#f5b04c; --warn-soft:rgba(245,176,76,.12); --warn-line:rgba(245,176,76,.40);
+    --nav-bg:rgba(13,14,17,.82);
+    --shadow:0 30px 70px rgba(0,0,0,.55);
+    --glow:radial-gradient(520px 320px at 76% -10%,rgba(90,169,255,.18),transparent 64%);
+    --maxw:1080px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f7f7f5; --bg-lift:#ffffff; --surface:#ffffff; --surface-2:#f1f0ed;
+      --line:#dcd9d3; --line-soft:#e8e5e0;
+      --txt:#1b1c20; --muted:#565c6b; --faint:#727889;
+      --accent:#0f6cbd; --accent-soft:rgba(15,108,189,.10); --accent-line:rgba(15,108,189,.28);
+      --hi:#6d28d9;
+      --warn:#9a4a00; --warn-soft:rgba(154,74,0,.08); --warn-line:rgba(154,74,0,.30);
+      --on-accent:#ffffff;
+      --nav-bg:rgba(247,247,245,.86);
+      --shadow:0 24px 50px rgba(28,22,18,.13);
+      --glow:radial-gradient(520px 320px at 76% -10%,rgba(15,108,189,.10),transparent 64%);
+    }
+  }
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  nav{position:sticky;top:0;z-index:var(--z-nav);background:var(--nav-bg);
+      backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line-soft)}
+  nav .wrap{display:flex;align-items:center;gap:18px;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+  .logo{width:26px;height:26px;border-radius:8px;background:var(--accent);color:var(--on-accent);
+        display:grid;place-items:center;font-size:12px;font-weight:800;font-family:var(--font-mono)}
+  .nav-links{display:flex;gap:18px;margin-left:auto;align-items:center;color:var(--muted);font-size:14px}
+  .nav-links a:hover{color:var(--txt)}
+  .langtog{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .langtog button{background:none;border:0;color:var(--muted);font:600 11px/1 var(--font-mono);
+                  padding:7px 9px;cursor:pointer}
+  .langtog button.on{background:var(--accent);color:var(--on-accent)}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:11px 20px;
+       font-weight:600;font-size:14px;border:1px solid transparent;transition:.15s}
+  .btn-primary{background:var(--accent);color:var(--on-accent)}
+  .btn-primary:hover{filter:brightness(1.08)}
+  .btn-ghost{border-color:var(--line);color:var(--txt)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+  .btn-sm{padding:8px 14px;font-size:13px}
+
+  header{padding:60px 0 34px;border-bottom:1px solid var(--line-soft);background:var(--glow)}
+  .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:46px;align-items:center}
+  .hero > *{min-width:0}
+  .heroicon{width:84px;height:84px;border-radius:20px;display:block;margin:0 0 20px;box-shadow:var(--shadow)}
+  .pill{display:inline-flex;align-items:center;gap:7px;font:600 12px/1.3 var(--font-mono);
+        color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);
+        border-radius:999px;padding:7px 13px;margin-bottom:18px}
+  h1{font-size:clamp(32px,4.6vw,50px);line-height:1.08;letter-spacing:-.025em;margin:0 0 16px}
+  .grad{background:linear-gradient(100deg,var(--accent),var(--hi));-webkit-background-clip:text;
+        background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:17px;line-height:1.6;margin:0 0 24px;max-width:56ch}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .meta{color:var(--faint);font-size:13px;font-family:var(--font-mono);line-height:1.7}
+
+  /* The pane, drawn in HTML: no external image. */
+  .pane{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+        box-shadow:var(--shadow);overflow:hidden;font-size:13px;max-width:380px;margin:0 auto;width:100%}
+  .pane-top{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line-soft);
+            font-weight:700}
+  .pane-top small{margin-left:auto;color:var(--faint);font:500 11px/1 var(--font-mono)}
+  .pane-body{padding:14px;display:grid;gap:10px}
+  .pane-card{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--bg-lift)}
+  .pane-card h4{font:600 10.5px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 8px}
+  .pane-label{font-size:17px;font-weight:800;margin-right:6px}
+  .tag{display:inline-block;font:600 10.5px/1 var(--font-mono);padding:4px 8px;border-radius:999px;
+       border:1px solid var(--line);color:var(--muted);margin:2px 2px 0 0}
+  .tag.good{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+  .bars{display:grid;grid-template-columns:1fr auto;gap:3px 8px;margin-top:10px;font:500 11px/1.3 var(--font-mono);color:var(--muted)}
+  .bars i{grid-column:1 / span 2;height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin-bottom:3px}
+  .bars i b{display:block;height:100%;background:var(--accent)}
+  .pane-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pbtn{font:600 11.5px/1 var(--font-sans);padding:7px 10px;border-radius:8px;border:1px solid var(--line);color:var(--txt)}
+  .pbtn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+  .pane-note{color:var(--faint);font-size:11px;margin-top:8px}
+
+  section{padding:62px 0;border-bottom:1px solid var(--line-soft)}
+  h2{font-size:clamp(24px,3vw,33px);letter-spacing:-.02em;margin:0 0 10px}
+  h3{font-size:16px;letter-spacing:-.01em}
+  .lead{color:var(--muted);font-size:16px;line-height:1.65;max-width:68ch;margin:0 0 4px}
+  .eyebrow{font:600 11px/1 var(--font-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--gap);margin-top:30px}
+  .grid > *{min-width:0}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+  .card h3{margin:0 0 8px}
+  .card p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}
+  .ico{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);
+       display:grid;place-items:center;margin-bottom:14px;font-size:17px;font-weight:700}
+
+  .bul{list-style:none;margin:20px 0 0;display:grid;gap:11px;max-width:72ch}
+  .bul li{position:relative;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .bul li::before{content:"";position:absolute;left:2px;top:.62em;width:7px;height:7px;border-radius:2px;background:var(--accent)}
+  .bul b{color:var(--txt);font-weight:600}
+
+  /* Flow diagram (CSS only). */
+  .flow{display:flex;align-items:stretch;gap:0;margin-top:30px}
+  .node{flex:1 1 0;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .node.me{border-color:var(--accent-line);background:var(--accent-soft)}
+  .node b{display:block;font-size:14.5px;margin-bottom:4px}
+  .node span{color:var(--muted);font-size:13px;line-height:1.5}
+  .node code{word-break:break-all}
+  .arrow{flex:0 0 46px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+         color:var(--faint);font:500 10px/1.2 var(--font-mono);text-align:center;padding:0 4px}
+  .arrow::before{content:"→";font-size:20px;color:var(--accent);line-height:1}
+  .boundary{margin-top:12px;color:var(--faint);font:500 12px/1.6 var(--font-mono)}
+
+  .tw{overflow-x:auto;margin-top:28px;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{color:var(--faint);font:600 11px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase}
+  td:first-child{color:var(--txt);font-weight:600}
+  td{color:var(--muted);line-height:1.6}
+
+  ol.install{list-style:none;counter-reset:s;margin:30px 0 0;display:grid;gap:18px}
+  ol.install > li{counter-increment:s;position:relative;padding:18px 20px 18px 62px;background:var(--surface);
+                  border:1px solid var(--line);border-radius:var(--radius);min-width:0}
+  ol.install > li::before{content:counter(s);position:absolute;left:18px;top:18px;width:28px;height:28px;border-radius:9px;
+                          background:var(--accent);color:var(--on-accent);font:800 14px/1 var(--font-mono);display:grid;place-items:center}
+  ol.install h3{margin:3px 0 6px}
+  ol.install p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}
+  .code{position:relative;margin-top:10px}
+  .code pre{background:var(--bg-lift);border:1px solid var(--line);border-radius:var(--radius-sm);
+            padding:12px 70px 12px 14px;font-size:12.5px;line-height:1.7;color:var(--txt);overflow-x:auto;white-space:pre}
+  .copy{position:absolute;top:7px;right:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted);
+        border-radius:7px;font:600 11px/1 var(--font-mono);padding:6px 8px;cursor:pointer}
+  .copy:hover{color:var(--accent);border-color:var(--accent-line)}
+
+  .note{display:flex;gap:12px;background:var(--surface-2);border:1px solid var(--line);
+        border-left:3px solid var(--accent);border-radius:var(--radius-sm);padding:16px 18px;
+        color:var(--muted);font-size:14px;line-height:1.6;margin-top:26px}
+  .note b{color:var(--txt)}
+  .note.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+  .note.warn > span:first-child{color:var(--warn)}
+
+  code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:6px;
+       padding:2px 6px;font-size:12.5px;color:var(--accent);overflow-wrap:anywhere}
+  pre code{background:none;border:0;padding:0;color:inherit;overflow-wrap:normal}
+  a.inl{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+
+  footer{padding:36px 0 56px;color:var(--faint);font-size:13px;text-align:center;line-height:1.9}
+  footer a{color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+  footer a:hover{color:var(--accent)}
+
+  @media (max-width:860px){
+    .hero{grid-template-columns:1fr;gap:32px}
+    .nav-links a:not(.btn){display:none}
+    header{padding:42px 0 26px}
+    section{padding:46px 0}
+    .flow{flex-direction:column}
+    .arrow{flex:0 0 auto;padding:6px 0}
+    .arrow::before{content:"↓"}
+  }
+  @media (max-width:430px){
+    .wrap{padding:0 16px}
+    nav .wrap{gap:10px}
+    .nav-links{gap:10px}
+    .brand .long{display:none}
+    ol.install > li{padding:56px 16px 16px}
+    ol.install > li::before{top:16px;left:16px}
+    th,td{padding:10px 8px}
+  }
+  @media (max-width:360px){
+    .nav-links .btn-sm{padding:8px 10px}
+    .langtog button{padding:7px 6px}
+  }
+</style>
+</head>
+<body class="lang-en">
+<a class="skip" href="#what"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span><span class="zh">跳至內容</span></a>
+
+<nav><div class="wrap">
+  <a class="brand" href="../"><span class="logo">jO</span>jevOutlook<span class="long">&nbsp;· add-in</span></a>
+  <div class="nav-links">
+    <a href="#how"><span class="en">How it works</span><span class="fr">Fonctionnement</span><span class="zh">運作方式</span></a>
+    <a href="#install"><span class="en">Install</span><span class="fr">Installer</span><span class="zh">安裝</span></a>
+    <a href="#sideload"><span class="en">Sideload</span><span class="fr">Charger</span><span class="zh">側載</span></a>
+    <a href="#help"><span class="en">Troubleshooting</span><span class="fr">Dépannage</span><span class="zh">疑難排解</span></a>
+    <div class="langtog" role="group" aria-label="Language / Langue / 語言">
+      <button type="button" data-lang="en" class="on" aria-pressed="true" onclick="setLang('en')">EN</button>
+      <button type="button" data-lang="fr" aria-pressed="false" onclick="setLang('fr')">FR</button>
+      <button type="button" data-lang="zh" aria-pressed="false" onclick="setLang('zh')">中文</button>
+    </div>
+    <a class="btn btn-primary btn-sm" href="https://github.com/vincentlauriat/MailClassification.jev">GitHub</a>
+  </div>
+</div></nav>
+
+<header id="top"><div class="wrap">
+  <div class="hero">
+    <div>
+      <img class="heroicon" src="../assets/icon-256.png" alt="The jevOutlook icon: a blue envelope with a purple check mark on a dark rounded square">
+      <span class="pill">◉ <span class="en">Outlook add-in · Microsoft 365 · local</span><span class="fr">Complément Outlook · Microsoft 365 · en local</span><span class="zh">Outlook 增益集 · Microsoft 365 · 本機執行</span></span>
+      <h1>
+        <span class="en">Classify the message<br><span class="grad">you are reading.</span></span>
+        <span class="fr">Classez le message<br><span class="grad">que vous lisez.</span></span>
+        <span class="zh">為你正在讀的<br><span class="grad">這封郵件分類。</span></span>
+      </h1>
+      <p class="sub">
+        <span class="en">A task pane inside Outlook. Jev picks one of your categories and tells you how sure it is; you apply it in one click. The pane is served by jevOutlook on your own computer — no cloud service, no extra sign-in.</span>
+        <span class="fr">Un volet dans Outlook. Jev choisit l'une de vos catégories et dit à quel point il en est sûr ; vous l'appliquez d'un clic. Le volet est servi par jevOutlook sur votre propre ordinateur — aucun service cloud, aucune connexion de plus.</span>
+        <span class="zh">Outlook 裡的一個工作窗格。Jev 從你的類別中選出一個，並告訴你它有多確定；你點一下就能套用。窗格由你自己電腦上的 jevOutlook 提供——沒有雲端服務，也不需要額外登入。</span>
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#install"><span class="en">Install the add-in</span><span class="fr">Installer le complément</span><span class="zh">安裝增益集</span></a>
+        <a class="btn btn-ghost" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md"><span class="en">Full guide on GitHub</span><span class="fr">Guide complet sur GitHub</span><span class="zh">在 GitHub 閱讀完整指南</span></a>
+      </div>
+      <p class="meta">
+        <span class="en">Free &amp; open source (MIT) · part of <a class="inl" href="../">jevOutlook</a></span>
+        <span class="fr">Gratuit et open source (MIT) · fait partie de <a class="inl" href="../">jevOutlook</a></span>
+        <span class="zh">免費開源（MIT）· <a class="inl" href="../">jevOutlook</a> 的一部分</span>
+      </p>
+    </div>
+    <div class="pane" role="img" aria-label="Sketch of the jevOutlook task pane: the label newsletters with confidence 0.962, metadata only, five probability bars, and the Apply category button">
+      <div class="pane-top"><span class="logo">jO</span>jevOutlook<small>alice@contoso.com</small></div>
+      <div class="pane-body">
+        <div class="pane-card">
+          <h4><span class="en">This message</span><span class="fr">Ce message</span><span class="zh">這封郵件</span></h4>
+          <span class="pane-label">newsletters</span><span class="tag good">confidence 0.962</span><span class="tag">metadata only</span>
+          <div class="bars">
+            <span>newsletters</span><span>96.2%</span><i><b style="width:96%"></b></i>
+            <span>routine-notifications</span><span>2.1%</span><i><b style="width:2%"></b></i>
+            <span>cold-outreach</span><span>0.9%</span><i><b style="width:1%"></b></i>
+          </div>
+          <div class="pane-btns"><span class="pbtn pri">Apply category</span></div>
+          <div class="pane-note"><span class="en">Nothing changes in Outlook until you click Apply.</span><span class="fr">Rien ne change dans Outlook avant de cliquer sur Apply.</span><span class="zh">點下 Apply 之前，Outlook 裡什麼都不會改變。</span></div>
+        </div>
+        <div class="pane-card">
+          <h4><span class="en">Inbox run</span><span class="fr">Traitement de la boîte</span><span class="zh">收件匣批次處理</span></h4>
+          <span class="tag">Limit 10</span><span class="tag good">Preview only</span><span class="tag">unread only</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></header>
+
+<main>
+
+<section id="what"><div class="wrap">
+  <p class="eyebrow"><span class="en">What it does</span><span class="fr">Ce qu'il fait</span><span class="zh">功能</span></p>
+  <h2><span class="en">A Classify button on the reading ribbon</span><span class="fr">Un bouton Classify sur le ruban de lecture</span><span class="zh">閱讀功能區上的 Classify 按鈕</span></h2>
+  <p class="lead">
+    <span class="en">Open a message, choose <b>Classify</b> in the <b>jevOutlook</b> group, and a pane opens beside it with two cards.</span>
+    <span class="fr">Ouvrez un message, choisissez <b>Classify</b> dans le groupe <b>jevOutlook</b> : un volet s'ouvre à côté, avec deux cartes.</span>
+    <span class="zh">開啟一封郵件，在 <b>jevOutlook</b> 群組中選擇 <b>Classify</b>，旁邊就會開啟一個含兩張卡片的窗格。</span>
+  </p>
+  <div class="grid">
+    <div class="card">
+      <div class="ico">1</div>
+      <h3><span class="en">This message</span><span class="fr">Ce message</span><span class="zh">這封郵件</span></h3>
+      <p><span class="en"><b>Classify with Jev</b> shows the label, its confidence, whether the headers were enough or the text was read, the top five probabilities and the cost. <b>Apply category</b> adds it to the message — existing categories are kept. <b>Apply + archive</b> appears only for archive-eligible categories. Nothing changes until you click Apply.</span><span class="fr"><b>Classify with Jev</b> affiche le libellé, sa confiance, si les en-têtes ont suffi ou si le texte a été lu, les cinq meilleures probabilités et le coût. <b>Apply category</b> l'ajoute au message — les catégories existantes sont conservées. <b>Apply + archive</b> n'apparaît que pour les catégories éligibles à l'archivage. Rien ne change avant Apply.</span><span class="zh"><b>Classify with Jev</b> 會顯示標籤、信心值、是只靠標頭還是讀了內文、前五名機率與費用。<b>Apply category</b> 把類別加到郵件上——既有類別保留。<b>Apply + archive</b> 只在可封存的類別出現。按下 Apply 之前不會改變任何東西。</span></p>
+    </div>
+    <div class="card">
+      <div class="ico">2</div>
+      <h3><span class="en">Inbox run</span><span class="fr">Traitement de la boîte</span><span class="zh">收件匣批次處理</span></h3>
+      <p><span class="en">The dashboard's batch run, from Outlook: 10, 50, 100 or all messages, <b>preview only by default</b>, categories or categories + archive (confirmed before a live archive run), unread only. Fixed in the pane: $0.10 budget, 0.75 / 0.93 thresholds, Inbox. A live list of the last 12 results and a Stop button.</span><span class="fr">Le traitement par lots du tableau de bord, depuis Outlook : 10, 50, 100 messages ou tous, <b>aperçu seul par défaut</b>, catégories ou catégories + archivage (confirmé avant un run réel avec archivage), non lus seulement. Fixés dans le volet : budget 0,10 $, seuils 0,75 / 0,93, boîte de réception. Une liste en direct des 12 derniers résultats et un bouton Stop.</span><span class="zh">把儀表板的批次處理搬進 Outlook：10、50、100 封或全部，<b>預設僅預覽</b>，只加類別或加類別並封存（實際封存前會要求確認），僅未讀。窗格中固定：預算 0.10 美元、門檻 0.75 / 0.93、收件匣。即時顯示最近 12 筆結果，並有 Stop 按鈕。</span></p>
+    </div>
+    <div class="card">
+      <div class="ico">↗</div>
+      <h3><span class="en">The full dashboard, one click away</span><span class="fr">Le tableau de bord complet, à un clic</span><span class="zh">完整儀表板，一鍵開啟</span></h3>
+      <p><span class="en">The footer links to the local dashboard for everything the pane keeps fixed — thresholds, budget, rules, other mailboxes — and names the model in use. The header shows the signed-in mailbox.</span><span class="fr">Le pied du volet renvoie au tableau de bord local pour tout ce que le volet fige — seuils, budget, règles, autres boîtes — et indique le modèle utilisé. L'en-tête affiche la boîte connectée.</span><span class="zh">窗格底部連到本機儀表板，處理窗格中固定的一切——門檻、預算、規則、其他信箱——並顯示使用中的模型。頂端顯示已登入的信箱。</span></p>
+    </div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <p class="eyebrow"><span class="en">How it works</span><span class="fr">Fonctionnement</span><span class="zh">運作方式</span></p>
+  <h2><span class="en">The pane lives on your computer, not in a cloud</span><span class="fr">Le volet vit sur votre ordinateur, pas dans un cloud</span><span class="zh">窗格在你的電腦上，不在雲端</span></h2>
+  <div class="flow">
+    <div class="node"><b>Outlook</b><span><span class="en">You read a message and press Classify.</span><span class="fr">Vous lisez un message et cliquez sur Classify.</span><span class="zh">你讀一封郵件並按下 Classify。</span></span></div>
+    <div class="arrow"><span class="en">loads</span><span class="fr">charge</span><span class="zh">載入</span></div>
+    <div class="node me"><b><span class="en">Task pane</span><span class="fr">Volet</span><span class="zh">工作窗格</span></b><span><code>https://localhost:5178</code></span></div>
+    <div class="arrow">POST /api</div>
+    <div class="node me"><b>jevoutlook ui</b><span><span class="en">Your Microsoft sign-in and your OpenRouter key, already configured.</span><span class="fr">Votre connexion Microsoft et votre clé OpenRouter, déjà configurées.</span><span class="zh">你已設定好的 Microsoft 登入與 OpenRouter 金鑰。</span></span></div>
+    <div class="arrow">Graph · OpenRouter</div>
+    <div class="node"><b><span class="en">Mailbox + Jev</span><span class="fr">Boîte + Jev</span><span class="zh">信箱 + Jev</span></b><span><span class="en">Graph reads and writes the message; Jev decides.</span><span class="fr">Graph lit et écrit le message ; Jev décide.</span><span class="zh">Graph 讀寫郵件；Jev 做判定。</span></span></div>
+  </div>
+  <p class="boundary"><span class="en">Highlighted: what runs on your computer.</span><span class="fr">En surbrillance : ce qui tourne sur votre ordinateur.</span><span class="zh">醒目標示：在你電腦上執行的部分。</span></p>
+  <ul class="bul">
+    <li><span class="en"><b>Served by your own server.</b> <code>jevoutlook ui</code> serves the dashboard on <code>http://127.0.0.1:5177</code> and the pane on <code>https://localhost:5178</code>, with the ASP.NET Core development certificate. If it is not running, Outlook has nothing to load.</span><span class="fr"><b>Servi par votre propre serveur.</b> <code>jevoutlook ui</code> sert le tableau de bord sur <code>http://127.0.0.1:5177</code> et le volet sur <code>https://localhost:5178</code>, avec le certificat de développement ASP.NET Core. S'il ne tourne pas, Outlook n'a rien à charger.</span><span class="zh"><b>由你自己的伺服器提供。</b><code>jevoutlook ui</code> 在 <code>http://127.0.0.1:5177</code> 提供儀表板，並以 ASP.NET Core 開發憑證在 <code>https://localhost:5178</code> 提供窗格。它沒在執行時，Outlook 就沒有東西可載入。</span></li>
+    <li><span class="en"><b>No sign-in of its own.</b> The add-in reuses jevOutlook's Microsoft 365 sign-in and stored key, with the first signed-in Microsoft 365 mailbox. The message is found with <code>convertToRestId</code>, then read through Microsoft Graph.</span><span class="fr"><b>Aucune connexion propre.</b> Le complément réutilise la connexion Microsoft 365 et la clé enregistrée de jevOutlook, avec la première boîte Microsoft 365 connectée. Le message est retrouvé via <code>convertToRestId</code>, puis lu par Microsoft Graph.</span><span class="zh"><b>本身不需登入。</b>增益集沿用 jevOutlook 的 Microsoft 365 登入與已儲存的金鑰，使用第一個已登入的 Microsoft 365 信箱。郵件先以 <code>convertToRestId</code> 定位，再透過 Microsoft Graph 讀取。</span></li>
+    <li><span class="en"><b>Locked to your machine.</b> Loopback only; any other Host header gets 421; the API answers same-origin JSON POST requests only. Email content is shown as text, never as HTML.</span><span class="fr"><b>Verrouillé sur votre machine.</b> Boucle locale seulement ; tout autre en-tête Host reçoit 421 ; l'API ne répond qu'aux requêtes POST JSON de même origine. Le contenu des e-mails est affiché comme texte, jamais comme HTML.</span><span class="zh"><b>鎖定在你的電腦上。</b>只監聽本機回送位址；其他 Host 標頭一律回 421；API 只接受同源的 JSON POST 請求。郵件內容以純文字顯示，絕不當成 HTML。</span></li>
+  </ul>
+</div></section>
+
+<section id="requirements"><div class="wrap">
+  <p class="eyebrow"><span class="en">Requirements</span><span class="fr">Prérequis</span><span class="zh">需求</span></p>
+  <h2><span class="en">What you need before you start</span><span class="fr">Ce qu'il faut avant de commencer</span><span class="zh">開始前需要準備的東西</span></h2>
+  <ul class="bul">
+    <li><span class="en"><b>A Microsoft 365 or Outlook.com mailbox.</b> Gmail and IMAP mailboxes work in the dashboard and CLI, not in the add-in.</span><span class="fr"><b>Une boîte Microsoft 365 ou Outlook.com.</b> Les boîtes Gmail et IMAP fonctionnent dans le tableau de bord et la CLI, pas dans le complément.</span><span class="zh"><b>一個 Microsoft 365 或 Outlook.com 信箱。</b>Gmail 與 IMAP 信箱可在儀表板與命令列使用，但不支援增益集。</span></li>
+    <li><span class="en"><b>The .NET 10 SDK</b>, an <b>Entra app registration</b>, an <b>OpenRouter key</b> and a <b>trusted development certificate</b> — all covered in the install steps below.</span><span class="fr"><b>Le SDK .NET 10</b>, une <b>inscription d'application Entra</b>, une <b>clé OpenRouter</b> et un <b>certificat de développement approuvé</b> — tout est couvert dans les étapes ci-dessous.</span><span class="zh"><b>.NET 10 SDK</b>、<b>Entra 應用程式註冊</b>、<b>OpenRouter 金鑰</b>，以及<b>受信任的開發憑證</b>——下方安裝步驟都會說明。</span></li>
+    <li><span class="en"><b>An organisation that allows custom add-ins.</b> Many companies disable them; only a tenant administrator can change that.</span><span class="fr"><b>Une organisation qui autorise les compléments personnalisés.</b> Beaucoup d'entreprises les désactivent ; seul un administrateur du tenant peut changer cela.</span><span class="zh"><b>允許自訂增益集的組織。</b>許多公司會停用自訂增益集；只有租用戶管理員能變更。</span></li>
+    <li><span class="en"><b>Outlook on the same computer as the server:</b> Outlook on the web, new Outlook for Windows, Outlook for Mac or classic Outlook for Windows. The manifest targets Mailbox requirement set 1.1, with the ribbon button at 1.3. Only the pane itself has been checked, in a browser; no mobile clients.</span><span class="fr"><b>Outlook sur le même ordinateur que le serveur :</b> Outlook sur le web, le nouvel Outlook pour Windows, Outlook pour Mac ou Outlook classique pour Windows. Le manifeste vise l'ensemble de conditions Mailbox 1.1, avec le bouton du ruban en 1.3. Seul le volet lui-même a été vérifié, dans un navigateur ; pas de clients mobiles.</span><span class="zh"><b>與伺服器在同一台電腦上的 Outlook：</b>網頁版 Outlook、新版 Windows 版 Outlook、Mac 版 Outlook 或傳統 Windows 版 Outlook。資訊清單要求 Mailbox 需求集 1.1，功能區按鈕為 1.3。目前只在瀏覽器中實際檢查過窗格本身；不支援行動版。</span></li>
+  </ul>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <p class="eyebrow"><span class="en">Install</span><span class="fr">Installer</span><span class="zh">安裝</span></p>
+  <h2><span class="en">Seven steps to a working pane</span><span class="fr">Sept étapes jusqu'au volet</span><span class="zh">七個步驟完成安裝</span></h2>
+  <p class="lead"><span class="en">macOS / Linux syntax. On Windows PowerShell, use <code>$HOME\.jevoutlook\bin</code> for <code>~/.jevoutlook/bin</code>.</span><span class="fr">Syntaxe macOS / Linux. Sous Windows PowerShell, utilisez <code>$HOME\.jevoutlook\bin</code> à la place de <code>~/.jevoutlook/bin</code>.</span><span class="zh">以下為 macOS / Linux 語法。在 Windows PowerShell 中，請把 <code>~/.jevoutlook/bin</code> 換成 <code>$HOME\.jevoutlook\bin</code>。</span></p>
+  <ol class="install">
+    <li>
+      <h3><span class="en">Build and publish</span><span class="fr">Compiler et publier</span><span class="zh">建置並發佈</span></h3>
+      <p><span class="en">A stable copy in <code>~/.jevoutlook/bin</code>; put it on your <code>PATH</code>.</span><span class="fr">Une copie stable dans <code>~/.jevoutlook/bin</code> ; ajoutez-la à votre <code>PATH</code>.</span><span class="zh">在 <code>~/.jevoutlook/bin</code> 產生穩定的副本，並加入 <code>PATH</code>。</span></p>
+      <div class="code"><pre><code>git clone https://github.com/vincentlauriat/MailClassification.jev.git
+cd MailClassification.jev
+dotnet publish src/JevOutlook -c Release -o ~/.jevoutlook/bin</code></pre></div>
+    </li>
+    <li>
+      <h3><span class="en">Store the OpenRouter key</span><span class="fr">Enregistrer la clé OpenRouter</span><span class="zh">儲存 OpenRouter 金鑰</span></h3>
+      <p><span class="en">Store it even if your shell exports it: the background service does not see shell variables.</span><span class="fr">Enregistrez-la même si votre shell l'exporte : le service d'arrière-plan ne voit pas les variables du shell.</span><span class="zh">即使 shell 已經匯出也要儲存：背景服務看不到 shell 的環境變數。</span></p>
+      <div class="code"><pre><code>jevoutlook key set sk-or-...
+jevoutlook key test</code></pre></div>
+    </li>
+    <li>
+      <h3><span class="en">Connect the Microsoft 365 mailbox</span><span class="fr">Connecter la boîte Microsoft 365</span><span class="zh">連接 Microsoft 365 信箱</span></h3>
+      <p><span class="en">After the one-time <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#62-microsoft-365--outlookcom-mailboxes">Entra app registration</a>; then type the device code that is printed.</span><span class="fr">Après l'<a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#62-microsoft-365--outlookcom-mailboxes">inscription Entra</a> unique ; saisissez ensuite le code affiché.</span><span class="zh">先完成一次性的 <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#62-microsoft-365--outlookcom-mailboxes">Entra 應用程式註冊</a>，再輸入畫面上顯示的裝置代碼。</span></p>
+      <div class="code"><pre><code>jevoutlook config set client-id &lt;application-client-id&gt;
+jevoutlook account add alice@contoso.com --m365</code></pre></div>
+    </li>
+    <li>
+      <h3><span class="en">Trust the development certificate</span><span class="fr">Approuver le certificat de développement</span><span class="zh">信任開發憑證</span></h3>
+      <p><span class="en">Once per computer. Outlook only loads add-in pages over HTTPS.</span><span class="fr">Une fois par ordinateur. Outlook ne charge les pages de complément qu'en HTTPS.</span><span class="zh">每台電腦一次。Outlook 只透過 HTTPS 載入增益集頁面。</span></p>
+      <div class="code"><pre><code>dotnet dev-certs https --trust</code></pre></div>
+    </li>
+    <li>
+      <h3><span class="en">Keep the server running</span><span class="fr">Garder le serveur en marche</span><span class="zh">讓伺服器持續執行</span></h3>
+      <p><span class="en">macOS: a LaunchAgent starts it at login; <code>service status</code> should report <code>Health : jevOutlook … answers</code>. Windows / Linux: no <code>service</code> command yet — run <code>jevoutlook ui --no-open</code> and keep it running, for example as a scheduled task at logon.</span><span class="fr">macOS : un LaunchAgent le lance à l'ouverture de session ; <code>service status</code> doit afficher <code>Health : jevOutlook … answers</code>. Windows / Linux : pas encore de commande <code>service</code> — lancez <code>jevoutlook ui --no-open</code> et gardez-le en marche, par exemple via une tâche planifiée à l'ouverture de session.</span><span class="zh">macOS：由 LaunchAgent 在登入時啟動；<code>service status</code> 應顯示 <code>Health : jevOutlook … answers</code>。Windows / Linux：目前還沒有 <code>service</code> 指令——請執行 <code>jevoutlook ui --no-open</code> 並保持執行，例如設成登入時的排程工作。</span></p>
+      <div class="code"><pre><code>jevoutlook service install --exe ~/.jevoutlook/bin/jevoutlook
+jevoutlook service status</code></pre></div>
+    </li>
+    <li>
+      <h3><span class="en">Check the pane in a browser</span><span class="fr">Vérifier le volet dans un navigateur</span><span class="zh">在瀏覽器中檢查窗格</span></h3>
+      <p><span class="en">Open <a class="inl" href="https://localhost:5178/taskpane.html">https://localhost:5178/taskpane.html</a>. It must load with no certificate warning and show your mailbox in its header.</span><span class="fr">Ouvrez <a class="inl" href="https://localhost:5178/taskpane.html">https://localhost:5178/taskpane.html</a>. La page doit se charger sans avertissement de certificat et afficher votre boîte dans son en-tête.</span><span class="zh">開啟 <a class="inl" href="https://localhost:5178/taskpane.html">https://localhost:5178/taskpane.html</a>。頁面必須在沒有憑證警告的情況下載入，並在頂端顯示你的信箱。</span></p>
+    </li>
+    <li>
+      <h3><span class="en">Get the manifest</span><span class="fr">Récupérer le manifeste</span><span class="zh">取得資訊清單</span></h3>
+      <p><span class="en">Download <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>, or write it with the CLI (without <code>--out</code> it goes to <code>release/jevoutlook-manifest.xml</code> under the current directory; <code>--https-port</code> if you changed the port).</span><span class="fr">Téléchargez <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>, ou écrivez-le avec la CLI (sans <code>--out</code>, il va dans <code>release/jevoutlook-manifest.xml</code> sous le répertoire courant ; <code>--https-port</code> si vous avez changé le port).</span><span class="zh">下載 <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>，或用命令列產生（沒有 <code>--out</code> 時會寫到目前目錄下的 <code>release/jevoutlook-manifest.xml</code>；若改過連接埠請加 <code>--https-port</code>）。</span></p>
+      <div class="code"><pre><code>jevoutlook addin manifest --out ~/jevoutlook-manifest.xml</code></pre></div>
+    </li>
+  </ol>
+</div></section>
+
+<section id="sideload"><div class="wrap">
+  <p class="eyebrow"><span class="en">Sideload</span><span class="fr">Charger le complément</span><span class="zh">側載</span></p>
+  <h2><span class="en">Add it to Outlook from the file</span><span class="fr">L'ajouter à Outlook depuis le fichier</span><span class="zh">從檔案加入 Outlook</span></h2>
+  <p class="lead"><span class="en">These are the usual paths; Microsoft moves menus from time to time. The reference is Microsoft's guide, <a class="inl" href="https://learn.microsoft.com/office/dev/add-ins/outlook/sideload-outlook-add-ins-for-testing">Sideload Outlook add-ins for testing</a>.</span><span class="fr">Ce sont les chemins habituels ; Microsoft déplace parfois les menus. La référence est le guide de Microsoft, <a class="inl" href="https://learn.microsoft.com/office/dev/add-ins/outlook/sideload-outlook-add-ins-for-testing">Sideload Outlook add-ins for testing</a>.</span><span class="zh">以下是常見路徑；Microsoft 不時會移動選單。請以 Microsoft 的官方指南 <a class="inl" href="https://learn.microsoft.com/office/dev/add-ins/outlook/sideload-outlook-add-ins-for-testing">Sideload Outlook add-ins for testing</a> 為準。</span></p>
+  <div class="tw"><table>
+    <thead><tr><th><span class="en">Client</span><span class="fr">Client</span><span class="zh">用戶端</span></th><th><span class="en">Usual path</span><span class="fr">Chemin habituel</span><span class="zh">常見路徑</span></th></tr></thead>
+    <tbody>
+      <tr><td><span class="en">Outlook on the web, new Outlook</span><span class="fr">Outlook sur le web, nouvel Outlook</span><span class="zh">網頁版 Outlook、新版 Outlook</span></td><td><span class="en">Open <a class="inl" href="https://aka.ms/olksideload">aka.ms/olksideload</a> → "Add-ins for Outlook" → <b>My add-ins</b> → <b>Custom add-ins</b> → <b>Add a custom add-in</b> → <b>Add from file…</b></span><span class="fr">Ouvrez <a class="inl" href="https://aka.ms/olksideload">aka.ms/olksideload</a> → « Add-ins for Outlook » → <b>My add-ins</b> → <b>Custom add-ins</b> → <b>Add a custom add-in</b> → <b>Add from file…</b> (libellés selon la langue d'Outlook)</span><span class="zh">開啟 <a class="inl" href="https://aka.ms/olksideload">aka.ms/olksideload</a> →「Add-ins for Outlook」→ <b>My add-ins</b> → <b>Custom add-ins</b> → <b>Add a custom add-in</b> → <b>Add from file…</b>（實際名稱依 Outlook 語言而定）</span></td></tr>
+      <tr><td><span class="en">Outlook for Mac</span><span class="fr">Outlook pour Mac</span><span class="zh">Mac 版 Outlook</span></td><td><span class="en"><b>Get Add-ins</b> (or under the <b>…</b> menu) → the same <b>My add-ins → Custom add-ins → Add from file…</b></span><span class="fr"><b>Get Add-ins</b> (ou dans le menu <b>…</b>) → le même <b>My add-ins → Custom add-ins → Add from file…</b></span><span class="zh"><b>Get Add-ins</b>（或在 <b>…</b> 選單中）→ 同樣的 <b>My add-ins → Custom add-ins → Add from file…</b></span></td></tr>
+      <tr><td><span class="en">Classic Outlook for Windows</span><span class="fr">Outlook classique pour Windows</span><span class="zh">傳統 Windows 版 Outlook</span></td><td><span class="en"><b>Home → Get Add-ins</b> (or <b>File → Manage Add-ins</b>) → the same <b>My add-ins → Custom add-ins → Add from file…</b></span><span class="fr"><b>Accueil → Get Add-ins</b> (ou <b>Fichier → Gérer les compléments</b>) → le même <b>My add-ins → Custom add-ins → Add from file…</b></span><span class="zh"><b>常用 → Get Add-ins</b>（或 <b>檔案 → 管理增益集</b>）→ 同樣的 <b>My add-ins → Custom add-ins → Add from file…</b></span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">
+    <span aria-hidden="true">ℹ</span>
+    <div>
+      <span class="en"><b>First use:</b> open a message → the <b>jevOutlook</b> group on the ribbon (or under <b>…</b> / <b>Apps</b>) → <b>Classify</b> → <b>Classify with Jev</b>. Keep <b>Preview only</b> ticked for your first Inbox runs.</span>
+      <span class="fr"><b>Première utilisation :</b> ouvrez un message → le groupe <b>jevOutlook</b> du ruban (ou sous <b>…</b> / <b>Apps</b>) → <b>Classify</b> → <b>Classify with Jev</b>. Laissez <b>Preview only</b> coché pour vos premiers traitements de la boîte.</span>
+      <span class="zh"><b>第一次使用：</b>開啟郵件 → 功能區上的 <b>jevOutlook</b> 群組（或在 <b>…</b> / <b>Apps</b> 之下）→ <b>Classify</b> → <b>Classify with Jev</b>。前幾次收件匣批次處理請保持勾選 <b>Preview only</b>。</span>
+    </div>
+  </div>
+</div></section>
+
+<section id="help"><div class="wrap">
+  <p class="eyebrow"><span class="en">Troubleshooting</span><span class="fr">Dépannage</span><span class="zh">疑難排解</span></p>
+  <h2><span class="en">The five problems you are most likely to meet</span><span class="fr">Les cinq problèmes les plus probables</span><span class="zh">最可能遇到的五個問題</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th><span class="en">Symptom</span><span class="fr">Symptôme</span><span class="zh">症狀</span></th><th><span class="en">Fix</span><span class="fr">Solution</span><span class="zh">解法</span></th></tr></thead>
+    <tbody>
+      <tr><td><span class="en">Blank pane / can't reach</span><span class="fr">Volet vide / injoignable</span><span class="zh">窗格空白／無法連線</span></td><td><span class="en">The server is not running. <code>jevoutlook service status</code>, then <code>service restart</code>; read <code>~/.jevoutlook/logs/ui.log</code>.</span><span class="fr">Le serveur ne tourne pas. <code>jevoutlook service status</code>, puis <code>service restart</code> ; lisez <code>~/.jevoutlook/logs/ui.log</code>.</span><span class="zh">伺服器沒有執行。執行 <code>jevoutlook service status</code>，再 <code>service restart</code>；查看 <code>~/.jevoutlook/logs/ui.log</code>。</span></td></tr>
+      <tr><td><span class="en">Certificate warning</span><span class="fr">Avertissement de certificat</span><span class="zh">憑證警告</span></td><td><span class="en"><code>dotnet dev-certs https --trust</code>, then restart the server. Without a certificate the server falls back to HTTP only and the pane cannot load.</span><span class="fr"><code>dotnet dev-certs https --trust</code>, puis redémarrez le serveur. Sans certificat, le serveur se replie sur HTTP seul et le volet ne peut pas se charger.</span><span class="zh">執行 <code>dotnet dev-certs https --trust</code>，再重新啟動伺服器。沒有憑證時伺服器只會以 HTTP 執行，窗格無法載入。</span></td></tr>
+      <tr><td><span class="en">"Not signed in — use the dashboard"</span><span class="fr">« Not signed in — use the dashboard »</span><span class="zh">「Not signed in — use the dashboard」</span></td><td><span class="en">The Microsoft sign-in expired: <code>jevoutlook account login &lt;id&gt;</code>.</span><span class="fr">La connexion Microsoft a expiré : <code>jevoutlook account login &lt;id&gt;</code>.</span><span class="zh">Microsoft 登入已過期：<code>jevoutlook account login &lt;id&gt;</code>。</span></td></tr>
+      <tr><td><span class="en">"· no API key"</span><span class="fr">« · no API key »</span><span class="zh">「· no API key」</span></td><td><span class="en"><code>jevoutlook key set &lt;key&gt;</code> — the service does not see a key exported only in your shell.</span><span class="fr"><code>jevoutlook key set &lt;clé&gt;</code> — le service ne voit pas une clé exportée seulement dans votre shell.</span><span class="zh"><code>jevoutlook key set &lt;金鑰&gt;</code>——服務看不到只在 shell 中匯出的金鑰。</span></td></tr>
+      <tr><td><span class="en">"Add-in installation failed"</span><span class="fr">« Add-in installation failed »</span><span class="zh">「Add-in installation failed」</span></td><td><span class="en">Custom add-ins are disabled by your organisation's policy. Only a tenant administrator can change it.</span><span class="fr">Les compléments personnalisés sont désactivés par la politique de votre organisation. Seul un administrateur du tenant peut la changer.</span><span class="zh">你的組織政策停用了自訂增益集。只有租用戶管理員能變更。</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="lead" style="margin-top:18px"><span class="en">Port conflicts, "Local server unreachable", the Stop button and more: <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md#9-troubleshooting">full troubleshooting table</a>.</span><span class="fr">Conflits de port, « Local server unreachable », le bouton Stop et plus : <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md#9-troubleshooting">tableau de dépannage complet</a>.</span><span class="zh">連接埠衝突、「Local server unreachable」、Stop 按鈕等更多問題：<a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md#9-troubleshooting">完整疑難排解表</a>。</span></p>
+</div></section>
+
+<section id="status"><div class="wrap">
+  <p class="eyebrow"><span class="en">Status</span><span class="fr">État</span><span class="zh">現況</span></p>
+  <h2><span class="en">What works today, and what does not yet</span><span class="fr">Ce qui marche aujourd'hui, et ce qui pas encore</span><span class="zh">目前可用與尚未完成的部分</span></h2>
+  <div class="note warn">
+    <span aria-hidden="true">⚠</span>
+    <div>
+      <span class="en"><b>Sideloading in a real Outlook is not validated end to end yet.</b> The pane works in a browser and the manifest passes Microsoft's validator, but the one sideload attempt so far was on a corporate tenant that blocks custom add-ins. The pane needs the local server running (option 1); an on-demand start (option 2) is <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/design/addin-on-demand-start.md">designed, not built</a>. Microsoft 365 and Outlook.com only, and always the first signed-in Microsoft 365 mailbox.</span>
+      <span class="fr"><b>Le chargement dans un vrai Outlook n'est pas encore validé de bout en bout.</b> Le volet fonctionne dans un navigateur et le manifeste passe le validateur de Microsoft, mais la seule tentative à ce jour visait un tenant d'entreprise qui bloque les compléments personnalisés. Le volet a besoin du serveur local en marche (option 1) ; un démarrage à la demande (option 2) est <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/design/addin-on-demand-start.md">conçu, pas construit</a>. Microsoft 365 et Outlook.com seulement, et toujours la première boîte Microsoft 365 connectée.</span>
+      <span class="zh"><b>在真正的 Outlook 中側載尚未完成端到端驗證。</b>窗格在瀏覽器中運作正常，資訊清單也通過 Microsoft 驗證工具，但目前唯一一次側載嘗試是在封鎖自訂增益集的企業租用戶上。窗格需要本機伺服器持續執行（方案一）；隨需啟動（方案二）已<a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/design/addin-on-demand-start.md">完成設計、尚未實作</a>。僅支援 Microsoft 365 與 Outlook.com，且一律使用第一個已登入的 Microsoft 365 信箱。</span>
+    </div>
+  </div>
+  <div class="cta" style="margin-top:28px">
+    <a class="btn btn-primary" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md"><span class="en">Read the full add-in guide</span><span class="fr">Lire le guide complet du complément</span><span class="zh">閱讀完整的增益集指南</span></a>
+    <a class="btn btn-ghost" href="../"><span class="en">Back to jevOutlook</span><span class="fr">Retour à jevOutlook</span><span class="zh">回到 jevOutlook</span></a>
+  </div>
+</div></section>
+
+</main>
+
+<footer><div class="wrap">
+  jevOutlook · <span class="en">MIT License</span><span class="fr">Licence MIT</span><span class="zh">MIT 授權</span> · © 2026 Vincent Lauriat<br>
+  <a href="https://github.com/vincentlauriat/MailClassification.jev">github.com/vincentlauriat/MailClassification.jev</a>
+  · <a href="https://lauriat.fr">lauriat.fr</a>
+  · <a href="https://vincentlauriat.github.io">vincentlauriat.github.io</a>
+</div></footer>
+
+<script>
+  var LANG_TAG={en:'en',fr:'fr',zh:'zh-Hant'};
+  function setLang(l){
+    if(!LANG_TAG[l]) l='en';
+    document.body.classList.remove('lang-en','lang-fr','lang-zh');
+    document.body.classList.add('lang-'+l);
+    document.documentElement.lang=LANG_TAG[l];
+    document.querySelectorAll('.langtog button').forEach(function(b){
+      var on=b.dataset.lang===l;
+      b.classList.toggle('on',on);
+      b.setAttribute('aria-pressed',on?'true':'false');
+    });
+    try{localStorage.setItem('vl-lang',l)}catch(e){}
+  }
+  (function(){
+    var saved;try{saved=localStorage.getItem('vl-lang')}catch(e){}
+    var n=(navigator.language||'en').slice(0,2).toLowerCase();
+    setLang(saved||(n==='zh'?'zh':(n==='fr'?'fr':'en')));
+  })();
+  // Copy buttons on code blocks (added by script, so they never show without it).
+  document.querySelectorAll('.code').forEach(function(box){
+    var pre=box.querySelector('pre'); if(!pre||!navigator.clipboard) return;
+    var b=document.createElement('button'); b.type='button'; b.className='copy'; b.textContent='copy';
+    b.setAttribute('aria-label','Copy');
+    b.addEventListener('click',function(){
+      navigator.clipboard.writeText(pre.innerText.trim()).then(function(){
+        b.textContent='✓'; setTimeout(function(){b.textContent='copy'},1400);
+      },function(){});
+    });
+    box.appendChild(b);
+  });
+</script>
+</body>
+</html>

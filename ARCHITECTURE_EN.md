@@ -211,3 +211,5 @@ stop that, at the cost of not restarting after a clean exit.
 
 Option 2 (on-demand start from a statically hosted pane through a `jevoutlook://start` URL handler) is designed, not
 built: see [docs/design/addin-on-demand-start.md](docs/design/addin-on-demand-start.md).
+
+User-facing guide to the add-in (install, sideload per client, security, troubleshooting): [docs/ADDIN.md](docs/ADDIN.md).

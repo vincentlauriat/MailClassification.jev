@@ -118,7 +118,8 @@
         el('model').textContent = ui.model || '';
         el('dashLink').href = ui.dashboardUrl || 'http://127.0.0.1:5177/';
         el('status').textContent = (auth.signedIn ? auth.account.replace(/<.*>/, '').trim() : 'Not signed in — use the dashboard') + (ui.hasSavedKey ? '' : ' · no API key');
-        state.job = ui.job;
+        // Jobs are kept per mailbox; the pane works on the default (first Microsoft 365) one.
+        state.job = (ui.jobs && ui.defaultAccount) ? ui.jobs[ui.defaultAccount] : null;
         if (state.job && state.job.status === 'running') renderJob(state.job);
       }).catch(function(e) { el('status').textContent = 'Local server unreachable: ' + e.message + ' — run "jevoutlook service status", then "jevoutlook service restart" (or "service install" once).'; });
     }
@@ -183,7 +184,7 @@
       api('processNextBatch', state.job.id, '').then(function(res) { state.job = res.job; renderJob(res.job); appendRows(res.results); (res.events || []).forEach(function(ev) { if (ev.level !== 'info') say('runMsg', ev.message, ev.level === 'error' ? 'error' : ''); }); loop(); })
         .catch(function(e) { say('runMsg', e.message, 'error'); finishRun(); });
     }
-    function stopRun() { state.stop = true; if (state.job) api('cancelTriageJob', state.job.id).then(function(r) { if (r.job) { state.job = r.job; renderJob(r.job); } }); }
+    function stopRun() { state.stop = true; if (state.job) api('cancelTriageJob', '').then(function(r) { if (r.job) { state.job = r.job; renderJob(r.job); } }).catch(function(e) { say('runMsg', e.message, 'error'); }); }
     function finishRun() { state.looping = false; el('stopBtn').hidden = true; el('runBtn').disabled = false; if (state.job && state.job.status !== 'running') say('runMsg', (state.job.dryRun ? 'Preview ' : 'Live run ') + state.job.status + (state.job.stopReason ? ' (' + state.job.stopReason + ')' : '') + (state.job.dryRun ? ' — no Outlook changes.' : ''), state.job.status === 'completed' ? 'ok' : ''); }
     function renderJob(j) {
       var handled = (j.processed || 0) + (j.skipped || 0);
