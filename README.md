@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
-[![Tests](https://img.shields.io/badge/tests-66%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
+[![Tests](https://img.shields.io/badge/tests-79%20passing-2ea44f.svg)](tests/JevOutlook.Tests)
 [![Landing page](https://img.shields.io/badge/site-vincentlauriat.github.io-0f6cbd.svg)](https://vincentlauriat.github.io/MailClassification.jev/)
 
 jevOutlook reads the messages of one or several mailboxes, asks **Jev** (TypeSafe's
@@ -37,6 +37,8 @@ is optional, separately gated, and off by default.
    - [6.2 Microsoft 365 / Outlook.com mailboxes](#62-microsoft-365--outlookcom-mailboxes)
    - [6.3 Gmail mailboxes](#63-gmail-mailboxes)
    - [6.4 Any other IMAP mailbox](#64-any-other-imap-mailbox)
+   - [6.5 Keep the dashboard running (macOS)](#65-keep-the-dashboard-running-macos)
+   - [6.6 The Outlook add-in (Microsoft 365)](#66-the-outlook-add-in-microsoft-365)
 7. [Your first run (preview)](#7-your-first-run-preview)
 8. [Going live: categories, then archiving](#8-going-live-categories-then-archiving)
 9. [Categories: playbooks and your own rules](#9-categories-playbooks-and-your-own-rules)
@@ -333,6 +335,51 @@ Archive       : Archive moves the message to the Archive folder.
 Inbox         : 1 240 messages, 87 unread
 ```
 
+### 6.5 Keep the dashboard running (macOS)
+
+`jevoutlook ui` stops when you close its terminal. To have the dashboard (and the Outlook
+add-in pane, which the same process serves) available from login onward, install it as a
+macOS **LaunchAgent**. Publish a stable copy first, so a later `dotnet build` or
+`dotnet clean` does not pull the executable from under the agent:
+
+```bash
+dotnet publish src/JevOutlook -c Release -o ~/.jevoutlook/bin
+~/.jevoutlook/bin/jevoutlook service install --exe ~/.jevoutlook/bin/jevoutlook
+```
+
+The agent runs `jevoutlook ui --no-open` at login, restarts it if it stops (at most every
+30 seconds) and writes its output to `~/.jevoutlook/logs/ui.log`.
+
+```bash
+jevoutlook service status      # plist, agent loaded or not, /health probe, log path
+jevoutlook service restart     # after publishing a new build
+jevoutlook service uninstall   # stop the agent and remove it
+```
+
+- The API key is **not** copied into the agent: the property list is plain text. Store the
+  key once with `jevoutlook key set <api-key>`; only `DOTNET_ROOT` and `JEVOUTLOOK_HOME`
+  are carried over from your shell.
+- Running `jevoutlook ui` by hand while the agent runs is harmless: it sees the running
+  server through `GET /health`, prints *already running* and opens the browser.
+- Custom ports: `service install --port 5177 --https-port 5178`.
+
+### 6.6 The Outlook add-in (Microsoft 365)
+
+A task pane inside Outlook classifies the message you are reading and applies the category
+(or category + archive) in one click. The pane is served by the local server over HTTPS, so
+it needs the ASP.NET development certificate and a running server
+([§6.5](#65-keep-the-dashboard-running-macos) keeps it up):
+
+```bash
+dotnet dev-certs https --trust          # once
+jevoutlook addin manifest               # writes release/jevoutlook-manifest.xml
+```
+
+In Outlook: **Get Add-ins → My add-ins → Add a custom add-in → Add from file**, then pick the
+manifest. The pane uses the first signed-in Microsoft 365 mailbox and the stored API key.
+Some organisations disable custom add-ins; the sideload then fails with a generic
+"installation failed" and only the tenant administrator can change that.
+
 ## 7. Your first run (preview)
 
 Keep the defaults for the first run: the **Inbox**, **unread messages only**, **10
@@ -513,6 +560,15 @@ CATEGORIES
 
 DASHBOARD
   ui [--port 5177] [--https-port 5178] [--no-https] [--no-open]
+                                     Local web dashboard (reuses a server that is already running)
+  addin manifest [--out file.xml]    Outlook add-in manifest (Microsoft 365 only)
+
+SERVICE (macOS)
+  service install [--port 5177] [--https-port 5178] [--exe <path>]
+                                     Keep 'ui --no-open' running from login (LaunchAgent)
+  service status [--port 5177]       Agent state, /health probe and log path
+  service restart                    Restart the agent (after a rebuild)
+  service uninstall                  Stop the agent and remove it
 
 PROCESSING
   run [--account <id> | --all-accounts]     Start a session (PREVIEW by default)
@@ -553,6 +609,10 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
     auth-record.json     Microsoft sign-in record (no token inside; tokens live in the OS cache)
     job.json             the current session: options, cursor, counters, spend, checkpointed decisions
     job-rules.json       the rules frozen for that session
+  logs/ui.log            output of the LaunchAgent (jevoutlook service install)
+  bin/                   suggested location of the published executable used by the agent
+
+~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist   the LaunchAgent (macOS, no secret inside)
 ```
 
 - A mailbox id is derived from its address: `alice@contoso.com` → `alice-contoso.com`.
@@ -575,6 +635,8 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
 | **"Microsoft sign-in is required or has expired"** | `jevoutlook account login <id>`. |
 | **Same messages keep coming back in preview** | Expected: preview writes nothing, so nothing marks them as processed. In live mode they carry your category and are skipped. |
 | **"Scanned 40 pages of already-processed messages"** | Everything recent already carries a category. `continue` scans older mail; or start a new session with `--include-read` / a different scope. |
+| **Outlook add-in pane shows "Local server unreachable"** | The local server stopped. `jevoutlook service status`, then `jevoutlook service restart` (or `service install` once, see [§6.5](#65-keep-the-dashboard-running-macos)). |
+| **"Port 5177 answers but not as a current jevOutlook"** | Another program, or an older jevOutlook build without `/health`, holds the port. Stop it (`pkill -f "jevoutlook ui"`) or pass `--port`. |
 | **Dashboard says "Cross-site or non-JSON requests … are rejected"** | The local API only answers same-origin JSON requests from its own page, on purpose (protection against DNS rebinding). Open <http://127.0.0.1:5177/> directly. |
 
 ## 15. Privacy and data handling
@@ -619,7 +681,7 @@ Exit codes of `run` / `continue`: `0` completed, `1` error, `3` paused or budget
 | Gmail / IMAP mailboxes | [MailKit](https://github.com/jstedfast/MailKit): UID cursor, `X-GM-LABELS` for Gmail, keywords (`STORE ±FLAGS`) elsewhere |
 | Model | Jev `~typesafe/jev-latest` through OpenRouter's Decisions API (or TypeSafe's API directly); strict validation of the answer contract |
 | Engine | Provider-agnostic `TriageEngine` behind an `IMailbox` interface: batches of 50, two concurrent waves, adaptive concurrency, budget reservation, circuit breaker, grouped idempotent writes |
-| Tests | 66 xUnit tests on the pure logic: rules, payload, answer parsing, text extraction, cursor paging, IMAP helpers |
+| Tests | 79 xUnit tests on the pure logic: rules, payload, answer parsing, text extraction, cursor paging, IMAP helpers, add-in manifest, LaunchAgent plist, origin allowlist |
 
 ```
 src/JevOutlook/
@@ -630,8 +692,8 @@ src/JevOutlook/
   Triage/      job model, run options, TriageEngine (waves, budget, checkpoints)
   Storage/     ~/.jevoutlook stores: config, rules, accounts, per-account jobs; SecretStore (Keychain)
   Rules/       LabelRule, the 7 playbooks, validation
-  Cli/         commands and terminal rendering
-  Web/         UiServer + embedded dashboard (adapted from jevMail, MIT)
+  Cli/         commands and terminal rendering; ServiceCommand (macOS LaunchAgent)
+  Web/         UiServer + embedded dashboard (adapted from jevMail, MIT) and Outlook add-in pane
 tests/JevOutlook.Tests/
 docs/          landing page (GitHub Pages) and screenshots
 ```

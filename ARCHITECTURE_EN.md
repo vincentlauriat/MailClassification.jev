@@ -50,10 +50,10 @@ Web/UiServer  ──┼─► Triage/TriageEngine ─► Mail/IMailbox ┤
 | `Jev/JevPayloadBuilder` | Builds the Choice question (options `L0..Ln`), size guard (29 000 bytes), cost estimate |
 | `Jev/JevClient` | Sends one Decisions request; strict contract validation; cost accounting source |
 | `Triage/TriageEngine` | Session lifecycle, batches, two waves, adaptive concurrency, budget, circuit breaker, grouped writes — provider-agnostic |
-| `Cli/*` | `account` commands, `--account` / `--all-accounts`, run/continue/status, terminal rendering, hidden password prompt |
-| `Web/UiServer` | Local dashboard (ASP.NET Core minimal API on 127.0.0.1): serves the embedded page and exposes jevMail's server functions as `POST /api/{function}` (args as JSON array) plus `addAccount` / `removeAccount` / `testAccount`; one engine and one device-code sign-in state per account |
-| `Web/wwwroot/*` | `index.html` + `style.css` adapted from jevMail (MIT): a bridge emulates `google.script.run` over `fetch`; Mailboxes card (chips, add/test/sign-in/remove, "Run all mailboxes" queue); `taskpane.html` (Office.js) and icons for the parked Outlook add-in |
-| Outlook add-in (parked) | Classic XML manifest served at `/manifest.xml`; sideloading was refused by the work tenant it was tested on (generic "installation failed" although the manifest passes Microsoft's validator). Kept working for Microsoft mailboxes if a tenant allows it; an empty account id in the API resolves to the first ready Microsoft mailbox |
+| `Cli/*` | `account` commands, `--account` / `--all-accounts`, run/continue/status, terminal rendering, hidden password prompt; `ServiceCommand` (`service install/status/restart/uninstall`, macOS LaunchAgent, see §10) |
+| `Web/UiServer` | Local dashboard (ASP.NET Core minimal API on 127.0.0.1): serves the embedded page and exposes jevMail's server functions as `POST /api/{function}` (args as JSON array) plus `addAccount` / `removeAccount` / `testAccount`; one engine and one device-code sign-in state per account. `GET /health` → `{app, version, https}` identifies a running jevOutlook (single instance, `service status`); `AllowedOrigins(port, httpsPort)` is the one place that builds the Host/Origin allowlists |
+| `Web/wwwroot/*` | `index.html` + `style.css` adapted from jevMail (MIT): a bridge emulates `google.script.run` over `fetch`; Mailboxes card (chips, add/test/sign-in/remove, "Run all mailboxes" queue); `taskpane.html` (Office.js) and icons for the Outlook add-in |
+| Outlook add-in | Classic XML manifest served at `/manifest.xml`; the pane is served by the local server over HTTPS, which the LaunchAgent (§10) keeps running. One work tenant refused the sideload (generic "installation failed" although the manifest passes Microsoft's validator): tenants that disable custom add-ins still block it. An empty account id in the API resolves to the first ready Microsoft mailbox |
 
 ## 4. Provider mapping
 
@@ -148,6 +148,8 @@ token, archiving messages out of the Inbox mid-run never shifts pages.
     auth-record.json     MSAL AuthenticationRecord (Microsoft mailboxes; tokens live in the OS cache)
     job.json             current session: options, cursor (sort key), counters, spend, pending items with decisions
     job-rules.json       rules frozen for the current session
+  logs/ui.log            stdout/stderr of the LaunchAgent
+~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist   LaunchAgent (macOS), no secret
 ```
 
 `<id>` is derived from the address (`alice@contoso.com` → `alice-contoso.com`). All
@@ -168,11 +170,14 @@ account entry on first start; the old session is dropped because its cursor type
 - The API key is read from the environment first; storing it on disk is opt-in.
 - The dashboard listens on 127.0.0.1 only and rejects DNS-rebinding / cross-site calls: `Host` allowlist
   (421), same-origin `Origin` / `Sec-Fetch-Site` and `application/json` required on `/api/*` (403).
-  Passwords entered in the page travel only to that loopback server.
+  Passwords entered in the page travel only to that loopback server. `GET /health` sits behind the same Host check.
+- The LaunchAgent plist is plaintext: `BuildLaunchAgentPlist` writes only `DOTNET_ROOT` and `JEVOUTLOOK_HOME`
+  (allowlist), never `OPENROUTER_API_KEY` / `JEV_API_KEY`; the agent reads the key stored with `key set`.
+  `launchctl` and `id -u` are started with `ArgumentList`, never through a shell.
 
-## 9. Verification status (2026-09-24)
+## 9. Verification status (2026-09-28)
 
-- `dotnet build`: 0 warnings, 0 errors. `dotnet test`: 66 tests pass (18 IMAP helper tests included; MailKit 4.18.0).
+- 2026-09-24: `dotnet build`: 0 warnings, 0 errors. `dotnet test`: 66 tests pass (18 IMAP helper tests included; MailKit 4.18.0).
 - Independent code-review pass (separate agent) + documentation verification of Graph/Azure.Identity/TypeSafe
   facts on 2026-09-22; Major findings fixed.
 - Live, on a Microsoft 365 work mailbox: device-code sign-in, listing, `$batch` reads, both Jev stages,
@@ -184,3 +189,25 @@ account entry on first start; the old session is dropped because its cursor type
   completed: 99 categorized, 1 skipped (no readable text), 120 Jev requests, $0.009, zero 429.
 - Not yet exercised live: the archive move; Gmail and generic IMAP (no credentials available yet:
   Gmail app passwords, the IMAP password, the second Microsoft tenant's admin consent).
+- 2026-09-28: `dotnet build -c Release` 0 warnings, 0 errors; `dotnet test` 79 tests pass (+13: LaunchAgent plist
+  contents, secret exclusion, XML escaping, `plutil -lint`, origin allowlist, `/health` body recognition).
+
+## 10. Keeping the server running (macOS LaunchAgent)
+
+The Outlook add-in pane is served by `jevoutlook ui` itself, and an Office web add-in cannot start a local process.
+Decision of 2026-09-28 (option 1): a per-user LaunchAgent keeps the server up from login onward.
+
+| Piece | Behaviour |
+| --- | --- |
+| `service install [--port] [--https-port] [--exe]` | Writes `~/Library/LaunchAgents/com.vincentlauriat.jevoutlook.plist` (`ProgramArguments` = exe `ui --no-open --port --https-port`, `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30, stdout/stderr → `~/.jevoutlook/logs/ui.log`), then `launchctl bootout` (if loaded) + `bootstrap gui/<uid>`. Exe defaults to the running one; warns for `bin/Debug`/`bin/Release` and recommends a `dotnet publish` copy in `~/.jevoutlook/bin` |
+| `service status` | Plist present, agent loaded (`launchctl print`), `/health` probe, log path; exit 1 when the server does not answer |
+| `service restart` | `launchctl kickstart -k gui/<uid>/<label>` (after a new publish) |
+| `service uninstall` | `launchctl bootout`, then deletes the plist |
+| Single instance | `ui` first probes `http://127.0.0.1:{port}/health` (2 s): a jevOutlook answer → "already running", open the browser, exit 0; any other answer → clear error instead of Kestrel's bind exception |
+
+Known behaviour: while a `ui` started by hand holds the port, the agent's copy exits 0 ("already running") and launchd,
+with `KeepAlive` true, starts it again every 30 s (one log line each time). `KeepAlive = {SuccessfulExit: false}` would
+stop that, at the cost of not restarting after a clean exit.
+
+Option 2 (on-demand start from a statically hosted pane through a `jevoutlook://start` URL handler) is designed, not
+built: see [docs/design/addin-on-demand-start.md](docs/design/addin-on-demand-start.md).
