@@ -568,7 +568,8 @@ CATEGORIES
 DASHBOARD
   ui [--port 5177] [--https-port 5178] [--no-https] [--no-open]
                                      Local web dashboard (reuses a server that is already running)
-  addin manifest [--out file.xml]    Outlook add-in manifest (Microsoft 365 only)
+  addin manifest [--https-port 5178] [--out file.xml]
+                                     Outlook add-in manifest (Microsoft 365 only); see docs/ADDIN.md
 
 SERVICE (macOS)
   service install [--port 5177] [--https-port 5178] [--exe <path>]
