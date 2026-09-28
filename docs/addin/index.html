@@ -85,26 +85,6 @@
   .cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
   .meta{color:var(--faint);font-size:13px;font-family:var(--font-mono);line-height:1.7}
 
-  /* The pane, drawn in HTML: no external image. */
-  .pane{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-        box-shadow:var(--shadow);overflow:hidden;font-size:13px;max-width:380px;margin:0 auto;width:100%}
-  .pane-top{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line-soft);
-            font-weight:700}
-  .pane-top small{margin-left:auto;color:var(--faint);font:500 11px/1 var(--font-mono)}
-  .pane-body{padding:14px;display:grid;gap:10px}
-  .pane-card{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--bg-lift)}
-  .pane-card h4{font:600 10.5px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 8px}
-  .pane-label{font-size:17px;font-weight:800;margin-right:6px}
-  .tag{display:inline-block;font:600 10.5px/1 var(--font-mono);padding:4px 8px;border-radius:999px;
-       border:1px solid var(--line);color:var(--muted);margin:2px 2px 0 0}
-  .tag.good{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
-  .bars{display:grid;grid-template-columns:1fr auto;gap:3px 8px;margin-top:10px;font:500 11px/1.3 var(--font-mono);color:var(--muted)}
-  .bars i{grid-column:1 / span 2;height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin-bottom:3px}
-  .bars i b{display:block;height:100%;background:var(--accent)}
-  .pane-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  .pbtn{font:600 11.5px/1 var(--font-sans);padding:7px 10px;border-radius:8px;border:1px solid var(--line);color:var(--txt)}
-  .pbtn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-  .pane-note{color:var(--faint);font-size:11px;margin-top:8px}
 
   section{padding:62px 0;border-bottom:1px solid var(--line-soft)}
   h2{font-size:clamp(24px,3vw,33px);letter-spacing:-.02em;margin:0 0 10px}
@@ -174,6 +154,9 @@
   footer a{color:var(--muted);text-decoration:underline;text-underline-offset:3px}
   footer a:hover{color:var(--accent)}
 
+  .shotfig{margin:0;justify-self:center;max-width:360px;width:100%}
+  .shotfig img{display:block;width:100%;height:auto;border-radius:var(--radius);border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .shotfig figcaption{color:var(--faint);font-size:12.5px;margin-top:10px;text-align:center}
   @media (max-width:860px){
     .hero{grid-template-columns:1fr;gap:32px}
     .nav-links a:not(.btn){display:none}
@@ -195,8 +178,7 @@
   @media (max-width:360px){
     .nav-links .btn-sm{padding:8px 10px}
     .langtog button{padding:7px 6px}
-  }
-</style>
+  }</style>
 </head>
 <body class="lang-en">
 <a class="skip" href="#what"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span><span class="zh">跳至內容</span></a>
@@ -242,26 +224,10 @@
         <span class="zh">免費開源（MIT）· <a class="inl" href="../">jevOutlook</a> 的一部分</span>
       </p>
     </div>
-    <div class="pane" role="img" aria-label="Sketch of the jevOutlook task pane: the label newsletters with confidence 0.962, metadata only, five probability bars, and the Apply category button">
-      <div class="pane-top"><span class="logo">jO</span>jevOutlook<small>alice@contoso.com</small></div>
-      <div class="pane-body">
-        <div class="pane-card">
-          <h4><span class="en">This message</span><span class="fr">Ce message</span><span class="zh">這封郵件</span></h4>
-          <span class="pane-label">newsletters</span><span class="tag good">confidence 0.962</span><span class="tag">metadata only</span>
-          <div class="bars">
-            <span>newsletters</span><span>96.2%</span><i><b style="width:96%"></b></i>
-            <span>routine-notifications</span><span>2.1%</span><i><b style="width:2%"></b></i>
-            <span>cold-outreach</span><span>0.9%</span><i><b style="width:1%"></b></i>
-          </div>
-          <div class="pane-btns"><span class="pbtn pri">Apply category</span></div>
-          <div class="pane-note"><span class="en">Nothing changes in Outlook until you click Apply.</span><span class="fr">Rien ne change dans Outlook avant de cliquer sur Apply.</span><span class="zh">點下 Apply 之前，Outlook 裡什麼都不會改變。</span></div>
-        </div>
-        <div class="pane-card">
-          <h4><span class="en">Inbox run</span><span class="fr">Traitement de la boîte</span><span class="zh">收件匣批次處理</span></h4>
-          <span class="tag">Limit 10</span><span class="tag good">Preview only</span><span class="tag">unread only</span>
-        </div>
-      </div>
-    </div>
+    <figure class="shotfig">
+      <img src="../screenshots/addin-pane-result.png" width="360" height="700" loading="eager" alt="The real jevOutlook task pane, opened in a browser, after Classify with Jev: the label action with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card in preview mode. The account name, subject and sender are replaced with fictitious values.">
+      <figcaption><span class="en">The real pane, served by the local server (account, subject and sender masked).</span><span class="fr">Le vrai volet, servi par le serveur local (compte, sujet et expéditeur masqués).</span><span class="zh">真實的窗格，由本機伺服器提供（帳號、主旨與寄件者已遮蔽）。</span></figcaption>
+    </figure>
   </div>
 </div></header>
 

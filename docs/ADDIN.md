@@ -13,6 +13,11 @@ Gmail and IMAP mailboxes.
 A shorter visual version of this guide is on the project site:
 <https://vincentlauriat.github.io/MailClassification.jev/addin/>.
 
+<p align="center">
+  <img src="screenshots/addin-pane-result.png" alt="The jevOutlook task pane after Classify with Jev: the label action with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card in preview mode" width="360">
+  <br><sub>The real pane, served by the local server and opened in a browser. The account name, subject and sender are masked.</sub>
+</p>
+
 > **Status, up front.** The pane, its API and the manifest work and are tested. Sideloading
 > the add-in into a real Outlook client has **not yet been validated end to end**. The one
 > attempt so far was on a corporate tenant that blocks custom add-ins, and it failed there.
@@ -44,6 +49,10 @@ When you read a message, Outlook shows a **jevOutlook** group on the ribbon. The
 ### "This message"
 
 The card shows the subject and the sender of the open message.
+
+<p align="center">
+  <img src="screenshots/addin-classify.png" alt="The This message card after classification: label action, confidence 0.960, metadata only, the top five probabilities as bars, Apply category and Apply + archive, and the cost of the request" width="340">
+</p>
 
 1. **Classify with Jev** asks Jev which of *your* categories fits the message. The categories
    are the same rules the dashboard and the CLI use (README
@@ -269,6 +278,10 @@ Open <https://localhost:5178/taskpane.html>.
   still classify the latest inbox message."*
 - Optional smoke test: click **Classify with Jev**. Outside Outlook, the pane classifies the
   newest message of your Inbox. It is read-only, and it costs a fraction of a cent.
+
+<p align="center">
+  <img src="screenshots/addin-pane.png" alt="The task pane opened in a browser before any classification: the This message card says No message selected, you can still classify the latest inbox message; the Inbox run card shows limit 10, preview only, categories only and unread only" width="320">
+</p>
 
 ### Step 7 — Get the manifest
 
