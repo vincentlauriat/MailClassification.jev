@@ -218,3 +218,5 @@ l'éviterait, au prix de ne plus relancer après une sortie propre.
 
 L'option 2 (démarrage à la demande depuis un volet hébergé statiquement, via un gestionnaire d'URL `jevoutlook://start`) est
 conçue, pas construite : voir [docs/design/addin-on-demand-start.md](docs/design/addin-on-demand-start.md).
+
+Guide utilisateur du complément (installation, chargement par client, sécurité, dépannage) : [docs/ADDIN.md](docs/ADDIN.md).

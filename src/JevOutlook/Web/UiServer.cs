@@ -446,6 +446,7 @@ public sealed class UiServer
             playbooks = Playbooks.All,
             accounts = AccountStore.Load().Select(AccountDto).ToList(),
             jobs = AccountStore.Load().ToDictionary(a => a.Id, a => JobDto(new JobStore(a.Id).Load())),
+            defaultAccount = DefaultAccountId(),
             secretBackend = SecretStore.Backend,
             hasClientId = !string.IsNullOrWhiteSpace(config.ClientId),
             dashboardUrl = $"http://127.0.0.1:{_httpPort}/",
@@ -518,6 +519,13 @@ public sealed class UiServer
         return accounts.FirstOrDefault(a => a.IsGraph && MailboxFactory.IsReady(a))
             ?? accounts.FirstOrDefault(a => a.IsGraph)
             ?? AccountStore.Resolve(null);
+    }
+
+    /// <summary>The account an empty id resolves to (the add-in pane's mailbox), or null when none is configured or it is ambiguous.</summary>
+    private static string? DefaultAccountId()
+    {
+        try { return Account(string.Empty).Id; }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException) { return null; }
     }
 
     /// <summary>
