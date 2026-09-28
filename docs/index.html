@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>jevOutlook — Semantic classification of Outlook, Gmail and IMAP mailboxes with Jev</title>
-<meta name="description" content="jevOutlook classifies the messages of your Outlook / Microsoft 365, Gmail and IMAP mailboxes with Jev, TypeSafe's decision model: one category per message written back as an Outlook category, Gmail label or IMAP keyword. Preview by default, a hard cost cap, checkpointed runs, everything on your machine. Free and open source (MIT), C# / .NET 10.">
-<meta property="og:title" content="jevOutlook — your mailboxes sorted by what messages mean">
-<meta property="og:description" content="Outlook, Gmail and IMAP mailboxes classified with Jev (TypeSafe): one category per message, preview by default, cost-capped, local. Free and open source.">
+<title>MailClassification — Semantic classification of Outlook, Gmail and IMAP mailboxes with Jev</title>
+<meta name="description" content="MailClassification classifies the messages of your Outlook / Microsoft 365, Gmail and IMAP mailboxes with Jev, TypeSafe's decision model: one category per message written back as an Outlook category, Gmail label or IMAP keyword. Use it from a local dashboard, the command line or an Outlook add-in. Preview by default, a hard cost cap, checkpointed runs, everything on your machine. Free and open source (MIT), C# / .NET 10.">
+<meta property="og:title" content="MailClassification — your mailboxes sorted by what messages mean">
+<meta property="og:description" content="Outlook, Gmail and IMAP mailboxes classified with Jev (TypeSafe): one category per message, from a dashboard, the CLI or an Outlook add-in. Preview by default, cost-capped, local. Free and open source.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://vincentlauriat.github.io/MailClassification.jev/">
 <meta property="og:image" content="https://vincentlauriat.github.io/MailClassification.jev/assets/icon-1024.png">
@@ -24,10 +24,11 @@
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "jevOutlook",
+  "name": "MailClassification",
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "macOS, Windows, Linux (.NET 10)",
-  "description": "Semantic classification of Outlook / Microsoft 365, Gmail and IMAP mailboxes with Jev (TypeSafe): one category per message, preview by default, a per-run cost cap, checkpointed and resumable sessions, no hosted backend.",
+  "description": "Semantic classification of Outlook / Microsoft 365, Gmail and IMAP mailboxes with Jev (TypeSafe): one category per message, preview by default, a per-run cost cap, checkpointed and resumable sessions, no hosted backend. Three ways to use it: a local web dashboard, a command-line interface and an Outlook add-in (task pane) for Microsoft 365 and Outlook.com.",
+  "featureList": ["Local web dashboard", "Command-line interface", "Outlook add-in task pane (Microsoft 365, Outlook.com)", "Microsoft Graph, Gmail and IMAP mailboxes"],
   "url": "https://vincentlauriat.github.io/MailClassification.jev/",
   "author": { "@type": "Person", "name": "Vincent Lauriat", "url": "https://lauriat.fr/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
@@ -37,7 +38,7 @@
 </script>
 <style>
   /* ----------------------------------------------------------------------
-     jevOutlook — palette et mise en page (socle repris de Claude Cockpit).
+     MailClassification — palette et mise en page (socle repris de Claude Cockpit).
      base.css pose les tokens sombres sur :root nu, sans bloc
      prefers-color-scheme : le mode clair se joue donc ici, et il redéfinit
      la palette ENTIÈRE, pas seulement le fond. Toute couleur écrite plus bas
@@ -138,6 +139,13 @@
   .ico{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);
        display:grid;place-items:center;margin-bottom:14px;font-size:17px;font-weight:700}
 
+  .card-hl{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+  .card .tag{display:inline-block;font:600 10.5px/1 var(--font-mono);color:var(--accent);background:var(--accent-soft);
+             border:1px solid var(--accent-line);border-radius:999px;padding:5px 9px;margin-bottom:10px}
+  .card a{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+  .split{display:grid;grid-template-columns:.8fr 1.2fr;gap:44px;align-items:center;margin-top:40px}
+  .split .bul{margin-top:0}
+
   .bul{list-style:none;margin:20px 0 0;display:grid;gap:11px;max-width:72ch}
   .bul li{position:relative;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
   .bul li::before{content:"";position:absolute;left:2px;top:.62em;width:7px;height:7px;
@@ -186,6 +194,7 @@
 
   @media (max-width:860px){
     .hero{grid-template-columns:1fr;gap:32px}
+    .split{grid-template-columns:1fr;gap:28px}
     .nav-links a:not(.btn){display:none}
     .steps{grid-template-columns:1fr}
     header{padding:42px 0 26px}
@@ -201,6 +210,7 @@
     td{overflow-wrap:anywhere}
   }
   @media (max-width:360px){
+    .brand .bname{display:none}
     .nav-links .btn-sm{padding:8px 10px}
     .langtog button{padding:7px 6px}
   }
@@ -208,10 +218,10 @@
 
 </head>
 <body class="lang-en">
-<a class="skip" href="#how"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span><span class="zh">跳至內容</span></a>
+<a class="skip" href="#addin"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span><span class="zh">跳至內容</span></a>
 
 <nav><div class="wrap">
-  <a class="brand" href="#top"><span class="logo">jO</span>jevOutlook</a>
+  <a class="brand" href="#top" aria-label="MailClassification"><span class="logo" aria-hidden="true">MC</span><span class="bname">MailClassification</span></a>
   <div class="nav-links">
     <a href="#how"><span class="en">How it decides</span><span class="fr">Comment il décide</span><span class="zh">如何判定</span></a>
     <a href="#mailboxes"><span class="en">Mailboxes</span><span class="fr">Boîtes</span><span class="zh">信箱</span></a>
@@ -230,20 +240,21 @@
 <header id="top"><div class="wrap">
   <div class="hero">
     <div>
-      <img class="heroicon" src="assets/icon-256.png" alt="The jevOutlook icon: a blue envelope with a purple check mark on a dark rounded square">
-      <span class="pill">◉ <span class="en">Outlook · Gmail · IMAP · local · MIT</span><span class="fr">Outlook · Gmail · IMAP · en local · MIT</span><span class="zh">Outlook · Gmail · IMAP · 本機執行 · MIT</span></span>
+      <img class="heroicon" src="assets/icon-256.png" alt="The MailClassification icon: a blue envelope with a purple check mark on a dark rounded square">
+      <span class="pill">◉ <span class="en">Outlook · Gmail · IMAP · add-in · local · MIT</span><span class="fr">Outlook · Gmail · IMAP · complément · en local · MIT</span><span class="zh">Outlook · Gmail · IMAP · 增益集 · 本機執行 · MIT</span></span>
       <h1>
         <span class="en">Your mailboxes sorted<br><span class="grad">by what messages mean.</span></span>
         <span class="fr">Vos boîtes triées<br><span class="grad">selon le sens des messages.</span></span>
         <span class="zh">依訊息的<span class="grad">真正含義</span><br>整理你的信箱。</span>
       </h1>
       <p class="sub">
-        <span class="en">jevOutlook reads Outlook, Gmail and IMAP mailboxes, asks Jev — TypeSafe's decision model — which of your own categories each message belongs to, and writes that one category back. Preview by default, a hard cost cap, no server, nothing deleted.</span>
-        <span class="fr">jevOutlook lit vos boîtes Outlook, Gmail et IMAP, demande à Jev — le modèle de décision de TypeSafe — à laquelle de vos catégories appartient chaque message, et écrit cette seule catégorie. Aperçu par défaut, budget plafonné, aucun serveur, rien de supprimé.</span>
-        <span class="zh">jevOutlook 讀取 Outlook、Gmail 與 IMAP 信箱，向 TypeSafe 的決策模型 Jev 詢問每封郵件屬於你定義的哪個類別，然後只寫回那一個類別。預設僅預覽、費用有上限、沒有伺服器、不刪除任何郵件。</span>
+        <span class="en">MailClassification reads Outlook, Gmail and IMAP mailboxes, asks Jev — TypeSafe's decision model — which of your own categories each message belongs to, and writes that one category back. Use it from a local dashboard, the command line, or an <b>Outlook add-in</b> that classifies the message you are reading. Preview by default, a hard cost cap, no server, nothing deleted.</span>
+        <span class="fr">MailClassification lit vos boîtes Outlook, Gmail et IMAP, demande à Jev — le modèle de décision de TypeSafe — à laquelle de vos catégories appartient chaque message, et écrit cette seule catégorie. Utilisez-le depuis un tableau de bord local, la ligne de commande, ou un <b>complément Outlook</b> qui classe le message que vous lisez. Aperçu par défaut, budget plafonné, aucun serveur, rien de supprimé.</span>
+        <span class="zh">MailClassification 讀取 Outlook、Gmail 與 IMAP 信箱，向 TypeSafe 的決策模型 Jev 詢問每封郵件屬於你定義的哪個類別，然後只寫回那一個類別。可透過本機儀表板、命令列，或直接在 <b>Outlook 增益集</b>中為正在閱讀的郵件分類。預設僅預覽、費用有上限、沒有伺服器、不刪除任何郵件。</span>
       </p>
       <div class="cta">
         <a class="btn btn-primary" href="https://github.com/vincentlauriat/MailClassification.jev#5-install"><span class="en">Build from source</span><span class="fr">Compiler depuis les sources</span><span class="zh">從原始碼建置</span></a>
+        <a class="btn btn-ghost" href="addin/"><span class="en">Outlook add-in</span><span class="fr">Complément Outlook</span><span class="zh">Outlook 增益集</span></a>
         <a class="btn btn-ghost" href="https://github.com/vincentlauriat/MailClassification.jev"><span class="en">Read the guide on GitHub</span><span class="fr">Lire le guide sur GitHub</span><span class="zh">在 GitHub 閱讀指南</span></a>
       </div>
       <ul class="badges">
@@ -251,7 +262,7 @@
         <li>macOS · Windows · Linux</li>
         <li><span class="en">Microsoft Graph + IMAP</span><span class="fr">Microsoft Graph + IMAP</span><span class="zh">Microsoft Graph + IMAP</span></li>
         <li>MIT</li>
-        <li><span class="en">114 tests</span><span class="fr">88 tests</span><span class="zh">114 項測試</span></li>
+        <li><span class="en">128 tests</span><span class="fr">128 tests</span><span class="zh">128 項測試</span></li>
       </ul>
       <p class="meta">
         <span class="en">Free &amp; open source · runs on your machine · sends the model only what it needs to decide</span>
@@ -260,7 +271,7 @@
       </p>
     </div>
     <figure class="shot">
-      <img src="screenshots/dashboard-mailboxes.png" alt="The Mailboxes card of the jevOutlook dashboard: a Microsoft 365 mailbox marked ready, and the form to add a Gmail mailbox with an app password">
+      <img src="screenshots/dashboard-mailboxes.png" alt="The Mailboxes card of the MailClassification dashboard: a Microsoft 365 mailbox marked ready, and the form to add a Gmail mailbox with an app password">
       <figcaption>
         <span class="en">The local dashboard — every mailbox, one place.</span>
         <span class="fr">Le tableau de bord local — toutes les boîtes, un seul endroit.</span>
@@ -271,6 +282,62 @@
 </div></header>
 
 <main>
+
+<section id="addin"><div class="wrap">
+  <p class="eyebrow"><span class="en">Three ways to use it</span><span class="fr">Trois façons de l'utiliser</span><span class="zh">三種使用方式</span></p>
+  <h2><span class="en">Dashboard, command line — or right inside Outlook</span><span class="fr">Tableau de bord, ligne de commande — ou directement dans Outlook</span><span class="zh">儀表板、命令列——或直接在 Outlook 裡</span></h2>
+  <p class="lead">
+    <span class="en">One program on your computer, one set of categories, one state. Pick the surface that fits the moment; they can be mixed freely.</span>
+    <span class="fr">Un seul programme sur votre ordinateur, un seul jeu de catégories, un seul état. Choisissez la surface qui convient au moment ; on peut les mélanger librement.</span>
+    <span class="zh">你電腦上的一個程式、一套類別、一份狀態。依當下需要選擇介面，三者可自由混用。</span>
+  </p>
+  <div class="grid">
+    <div class="card">
+      <div class="ico">▦</div>
+      <h3><span class="en">Dashboard</span><span class="fr">Tableau de bord</span><span class="zh">儀表板</span></h3>
+      <p><span class="en">A local web page on 127.0.0.1: add mailboxes, pick a playbook, preview ten messages, then run live batches on every mailbox.</span><span class="fr">Une page web locale sur 127.0.0.1 : ajouter des boîtes, choisir un playbook, prévisualiser dix messages, puis lancer des lots réels sur toutes les boîtes.</span><span class="zh">127.0.0.1 上的本機網頁：新增信箱、選擇方案、預覽十封郵件，再對所有信箱正式批次執行。</span></p>
+    </div>
+    <div class="card">
+      <div class="ico">&gt;_</div>
+      <h3><span class="en">Command line</span><span class="fr">Ligne de commande</span><span class="zh">命令列</span></h3>
+      <p><span class="en"><code>mailclassification run</code>, <code>continue</code>, <code>status</code>: the same engine for scripts and scheduled runs, one mailbox or <code>--all-accounts</code>.</span><span class="fr"><code>mailclassification run</code>, <code>continue</code>, <code>status</code> : le même moteur pour les scripts et les exécutions planifiées, une boîte ou <code>--all-accounts</code>.</span><span class="zh"><code>mailclassification run</code>、<code>continue</code>、<code>status</code>：同一個引擎，適合腳本與排程，可處理單一信箱或 <code>--all-accounts</code>。</span></p>
+    </div>
+    <div class="card card-hl">
+      <span class="tag"><span class="en">Microsoft 365 · Outlook.com</span><span class="fr">Microsoft 365 · Outlook.com</span><span class="zh">Microsoft 365 · Outlook.com</span></span>
+      <h3><span class="en">Outlook add-in</span><span class="fr">Complément Outlook</span><span class="zh">Outlook 增益集</span></h3>
+      <p><span class="en">A <b>Classify</b> button next to the message you are reading: Jev's category, its confidence, one click to apply. <a href="addin/">Install and use →</a></span><span class="fr">Un bouton <b>Classify</b> à côté du message que vous lisez : la catégorie de Jev, sa confiance, un clic pour l'appliquer. <a href="addin/">Installer et utiliser →</a></span><span class="zh">在正在閱讀的郵件旁有一個 <b>Classify</b> 按鈕：顯示 Jev 的類別與信心值，點一下即套用。<a href="addin/">安裝與使用 →</a></span></p>
+    </div>
+  </div>
+  <div class="split">
+    <figure class="shot shot-panel">
+      <img src="screenshots/addin-pane-result.png" alt="The MailClassification task pane after Classify with Jev: a label with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card" loading="lazy">
+      <figcaption>
+        <span class="en">The real pane, served by the local server. Account, subject and sender masked.</span>
+        <span class="fr">Le vrai volet, servi par le serveur local. Compte, objet et expéditeur masqués.</span>
+        <span class="zh">真實的工作窗格，由本機伺服器提供。帳號、主旨與寄件者已遮蔽。</span>
+      </figcaption>
+    </figure>
+    <div>
+      <h3><span class="en">The add-in, in short</span><span class="fr">Le complément, en bref</span><span class="zh">增益集重點</span></h3>
+      <ul class="bul">
+        <li><span class="en"><b>Classify, then decide.</b> Classifying is read-only; nothing changes in Outlook until you click <i>Apply category</i> (or <i>Apply + archive</i> when the rule allows it and the confidence reaches 0.93).</span><span class="fr"><b>Classer, puis décider.</b> Classer ne modifie rien ; rien ne change dans Outlook avant un clic sur <i>Apply category</i> (ou <i>Apply + archive</i> si la règle l'autorise et que la confiance atteint 0,93).</span><span class="zh"><b>先分類，再決定。</b>分類是唯讀的；在你按下 <i>Apply category</i>（或規則允許且信心值達 0.93 時的 <i>Apply + archive</i>）之前，Outlook 裡什麼都不會改變。</span></li>
+        <li><span class="en"><b>An Inbox run from the pane.</b> The same preview-first batch as the dashboard, without leaving Outlook.</span><span class="fr"><b>Un run sur la boîte de réception depuis le volet.</b> Le même lot, aperçu d'abord, que dans le tableau de bord, sans quitter Outlook.</span><span class="zh"><b>在窗格中處理收件匣。</b>與儀表板相同、先預覽的批次處理，不必離開 Outlook。</span></li>
+        <li><span class="en"><b>Nothing hosted.</b> The pane is served over HTTPS by MailClassification on your own computer, with the sign-in and key you already set up.</span><span class="fr"><b>Rien d'hébergé.</b> Le volet est servi en HTTPS par MailClassification sur votre ordinateur, avec la connexion et la clé déjà configurées.</span><span class="zh"><b>不需任何代管服務。</b>窗格由你電腦上的 MailClassification 以 HTTPS 提供，沿用你已設定好的登入與金鑰。</span></li>
+      </ul>
+      <div class="note">
+        <span aria-hidden="true">ℹ</span>
+        <div>
+          <span class="en"><b>Honest status:</b> the pane, its API and the manifest work and are tested; sideloading into a real Outlook client is not yet validated end to end, and tenants that disable custom add-ins block it.</span>
+          <span class="fr"><b>État honnête :</b> le volet, son API et le manifeste fonctionnent et sont testés ; le chargement dans un vrai client Outlook n'est pas encore validé de bout en bout, et les tenants qui désactivent les compléments personnalisés le bloquent.</span>
+          <span class="zh"><b>老實說：</b>窗格、其 API 與資訊清單都能運作並經過測試；但在真實 Outlook 用戶端中側載尚未完成端到端驗證，而停用自訂增益集的租用戶會加以封鎖。</span>
+        </div>
+      </div>
+      <div class="cta" style="margin-top:22px">
+        <a class="btn btn-primary" href="addin/"><span class="en">The add-in: install and use</span><span class="fr">Le complément : installer et utiliser</span><span class="zh">增益集：安裝與使用</span></a>
+      </div>
+    </div>
+  </div>
+</div></section>
 
 <section id="how"><div class="wrap">
   <p class="eyebrow"><span class="en">How it decides</span><span class="fr">Comment il décide</span><span class="zh">如何判定</span></p>
@@ -326,7 +393,7 @@
     <div class="card">
       <div class="ico">I</div>
       <h3><span class="en">Any IMAP server</span><span class="fr">Tout serveur IMAP</span><span class="zh">任何 IMAP 伺服器</span></h3>
-      <p><span class="en">Dovecot, Cyrus, Courier, most hosted mail. Categories are IMAP keywords — custom flags shown by Thunderbird, Apple Mail or Roundcube — and archive moves to an Archive folder. If a server refuses custom keywords, jevOutlook says so and writes nothing.</span><span class="fr">Dovecot, Cyrus, Courier, la plupart des hébergeurs. Les catégories sont des mots-clés IMAP — des drapeaux personnalisés affichés par Thunderbird, Apple Mail ou Roundcube — et l'archivage déplace vers un dossier Archive. Si un serveur refuse les mots-clés, jevOutlook le dit et n'écrit rien.</span><span class="zh">Dovecot、Cyrus、Courier 及大多數代管郵件服務。類別是 IMAP 關鍵字——Thunderbird、Apple Mail 或 Roundcube 都會顯示的自訂旗標——封存則移到 Archive 資料夾。若伺服器拒絕自訂關鍵字，jevOutlook 會明說並且不寫入任何東西。</span></p>
+      <p><span class="en">Dovecot, Cyrus, Courier, most hosted mail. Categories are IMAP keywords — custom flags shown by Thunderbird, Apple Mail or Roundcube — and archive moves to an Archive folder. If a server refuses custom keywords, MailClassification says so and writes nothing.</span><span class="fr">Dovecot, Cyrus, Courier, la plupart des hébergeurs. Les catégories sont des mots-clés IMAP — des drapeaux personnalisés affichés par Thunderbird, Apple Mail ou Roundcube — et l'archivage déplace vers un dossier Archive. Si un serveur refuse les mots-clés, MailClassification le dit et n'écrit rien.</span><span class="zh">Dovecot、Cyrus、Courier 及大多數代管郵件服務。類別是 IMAP 關鍵字——Thunderbird、Apple Mail 或 Roundcube 都會顯示的自訂旗標——封存則移到 Archive 資料夾。若伺服器拒絕自訂關鍵字，MailClassification 會明說並且不寫入任何東西。</span></p>
     </div>
   </div>
   <div class="note">
@@ -339,18 +406,6 @@
   </div>
 </div></section>
 
-<section id="addin"><div class="wrap">
-  <p class="eyebrow"><span class="en">Outlook add-in</span><span class="fr">Complément Outlook</span><span class="zh">Outlook 增益集</span></p>
-  <h2><span class="en">Classify the message you are reading, inside Outlook</span><span class="fr">Classez le message que vous lisez, dans Outlook</span><span class="zh">在 Outlook 裡為正在讀的郵件分類</span></h2>
-  <p class="lead">
-    <span class="en">For Microsoft 365 and Outlook.com mailboxes, a task pane shows Jev's category, its confidence and the top probabilities for the open message; one click applies it. The pane is served by jevOutlook on your own computer, with the sign-in and key you already configured.</span>
-    <span class="fr">Pour les boîtes Microsoft 365 et Outlook.com, un volet affiche la catégorie choisie par Jev pour le message ouvert, sa confiance et les meilleures probabilités ; un clic l'applique. Le volet est servi par jevOutlook sur votre propre ordinateur, avec la connexion et la clé déjà configurées.</span>
-    <span class="zh">適用於 Microsoft 365 與 Outlook.com 信箱：工作窗格會顯示 Jev 為目前郵件選出的類別、信心值與前幾名機率，點一下即可套用。窗格由你電腦上的 jevOutlook 提供，沿用你已設定好的登入與金鑰。</span>
-  </p>
-  <div class="cta" style="margin-top:24px">
-    <a class="btn btn-primary" href="addin/"><span class="en">The add-in: install and use</span><span class="fr">Le complément : installer et utiliser</span><span class="zh">增益集：安裝與使用</span></a>
-  </div>
-</div></section>
 
 <section id="safety"><div class="wrap">
   <p class="eyebrow"><span class="en">Safe by default</span><span class="fr">Sûr par défaut</span><span class="zh">預設安全</span></p>
@@ -359,7 +414,7 @@
     <li><span class="en"><b>Preview by default.</b> The first run shows a table of what would happen; nothing is written until you untick "Preview only" or pass <code>--live</code>.</span><span class="fr"><b>Aperçu par défaut.</b> Le premier run affiche un tableau de ce qui se passerait ; rien n'est écrit tant que vous ne décochez pas « Preview only » ou ne passez pas <code>--live</code>.</span><span class="zh"><b>預設僅預覽。</b>第一次執行只顯示將會發生什麼的表格；除非取消勾選「Preview only」或加上 <code>--live</code>，否則不寫入任何東西。</span></li>
     <li><span class="en"><b>Archiving needs four things at once:</b> the archive mode, a category you marked archive-eligible, a confidence at or above a second, stricter threshold (0.93), and — in the terminal — a typed confirmation. Archived mail is moved, never deleted.</span><span class="fr"><b>L'archivage exige quatre conditions à la fois :</b> le mode archivage, une catégorie que vous avez marquée éligible, une confiance au moins égale à un second seuil plus strict (0,93) et — dans le terminal — une confirmation saisie. Le courrier archivé est déplacé, jamais supprimé.</span><span class="zh"><b>封存需要同時滿足四個條件：</b>封存模式、你標記為可封存的類別、信心值達到第二個更嚴格的門檻（0.93），以及——在終端機裡——輸入確認。封存的郵件只是移動，從不刪除。</span></li>
     <li><span class="en"><b>A cost cap per run.</b> Before every model request the remaining budget is checked; the run stops at the cap and can be continued with a higher one. Actual spend comes from OpenRouter's own report.</span><span class="fr"><b>Un plafond de coût par run.</b> Avant chaque requête au modèle, le budget restant est vérifié ; le run s'arrête au plafond et peut reprendre avec un plafond plus haut. La dépense réelle vient du relevé d'OpenRouter.</span><span class="zh"><b>每次執行都有費用上限。</b>每次向模型請求前都會檢查剩餘預算；到達上限就停止，可提高上限後續跑。實際花費以 OpenRouter 的回報為準。</span></li>
-    <li><span class="en"><b>Fails closed.</b> An invalid model answer, an unreadable body, a vanished message or a throttled server: the message is skipped or the run pauses with everything checkpointed. The mailbox is never modified on doubt. jevOutlook never deletes, never marks junk, never sends.</span><span class="fr"><b>Fermeture sûre.</b> Réponse invalide du modèle, corps illisible, message disparu ou serveur saturé : le message est ignoré ou le run se met en pause, tout étant checkpointé. La boîte n'est jamais modifiée dans le doute. jevOutlook ne supprime jamais, ne marque jamais en indésirable, n'envoie jamais.</span><span class="zh"><b>失敗即關閉。</b>模型回答無效、內文無法讀取、郵件消失或伺服器限流時：郵件會被略過或執行暫停，且全部已存檔。有疑慮時絕不修改信箱。jevOutlook 從不刪除、從不標記垃圾郵件、從不寄信。</span></li>
+    <li><span class="en"><b>Fails closed.</b> An invalid model answer, an unreadable body, a vanished message or a throttled server: the message is skipped or the run pauses with everything checkpointed. The mailbox is never modified on doubt. MailClassification never deletes, never marks junk, never sends.</span><span class="fr"><b>Fermeture sûre.</b> Réponse invalide du modèle, corps illisible, message disparu ou serveur saturé : le message est ignoré ou le run se met en pause, tout étant checkpointé. La boîte n'est jamais modifiée dans le doute. MailClassification ne supprime jamais, ne marque jamais en indésirable, n'envoie jamais.</span><span class="zh"><b>失敗即關閉。</b>模型回答無效、內文無法讀取、郵件消失或伺服器限流時：郵件會被略過或執行暫停，且全部已存檔。有疑慮時絕不修改信箱。MailClassification 從不刪除、從不標記垃圾郵件、從不寄信。</span></li>
     <li><span class="en"><b>Nothing to undo later.</b> Only your category is added; existing categories are kept. A message already carrying one of your categories is skipped by later runs — that is the only "marker" there is.</span><span class="fr"><b>Rien à défaire plus tard.</b> Seule votre catégorie est ajoutée ; les existantes sont conservées. Un message qui porte déjà l'une de vos catégories est ignoré par les runs suivants — c'est le seul « marqueur » qui existe.</span><span class="zh"><b>日後無需復原。</b>只加上你的類別；既有類別保留。已帶有你任一類別的郵件會被後續執行略過——這是唯一的「標記」。</span></li>
   </ul>
   <div class="readout">
@@ -397,7 +452,7 @@
   <p class="eyebrow"><span class="en">Privacy</span><span class="fr">Confidentialité</span><span class="zh">隱私</span></p>
   <h2><span class="en">Runs on your machine. Sends the model only what it needs to decide.</span><span class="fr">Tourne sur votre machine. N'envoie au modèle que ce qu'il faut pour décider.</span><span class="zh">在你的電腦上執行。只把判定所需的內容送給模型。</span></h2>
   <ul class="bul">
-    <li><span class="en"><b>No server, no account, no telemetry.</b> The dashboard is a local page on 127.0.0.1 that rejects cross-site calls. State lives in <code>~/.jevoutlook</code> with mode 0600.</span><span class="fr"><b>Aucun serveur, aucun compte, aucune télémétrie.</b> Le tableau de bord est une page locale sur 127.0.0.1 qui rejette les appels cross-site. L'état vit dans <code>~/.jevoutlook</code> en mode 0600.</span><span class="zh"><b>沒有伺服器、沒有帳號、沒有遙測。</b>儀表板是 127.0.0.1 上的本機頁面，會拒絕跨站呼叫。狀態存放在 <code>~/.jevoutlook</code>，權限 0600。</span></li>
+    <li><span class="en"><b>No server, no account, no telemetry.</b> The dashboard is a local page on 127.0.0.1 that rejects cross-site calls. State lives in <code>~/.mailclassification</code> with mode 0600.</span><span class="fr"><b>Aucun serveur, aucun compte, aucune télémétrie.</b> Le tableau de bord est une page locale sur 127.0.0.1 qui rejette les appels cross-site. L'état vit dans <code>~/.mailclassification</code> en mode 0600.</span><span class="zh"><b>沒有伺服器、沒有帳號、沒有遙測。</b>儀表板是 127.0.0.1 上的本機頁面，會拒絕跨站呼叫。狀態存放在 <code>~/.mailclassification</code>，權限 0600。</span></li>
     <li><span class="en"><b>What the model receives</b> for each selected message: your category names and criteria, sender, recipients, subject, date, mailing-list and automation headers, importance, the 255-character preview, and — only when the confidence policy requires it — up to 5 000 characters of text. Never attachments. One message per request, never combined with another.</span><span class="fr"><b>Ce que le modèle reçoit</b> pour chaque message sélectionné : vos noms de catégories et leurs critères, expéditeur, destinataires, objet, date, en-têtes de liste et d'automatisation, importance, l'aperçu de 255 caractères et — seulement quand la politique de confiance l'exige — jusqu'à 5 000 caractères de texte. Jamais les pièces jointes. Un message par requête, jamais combiné à un autre.</span><span class="zh"><b>模型收到的內容</b>（每封被選中的郵件）：你的類別名稱與判準、寄件者、收件者、主旨、日期、郵件列表與自動化標頭、重要性、255 字元預覽，以及——僅在信心政策要求時——至多 5,000 字元的內文。絕不含附件。每次請求一封郵件，從不與其他郵件合併。</span></li>
     <li><span class="en"><b>Email is untrusted input.</b> The prompt tells the model never to follow instructions found inside a message.</span><span class="fr"><b>L'e-mail est une donnée non fiable.</b> Le prompt interdit au modèle de suivre des instructions trouvées dans un message.</span><span class="zh"><b>郵件是不可信的輸入。</b>提示詞明確要求模型絕不執行郵件內出現的指令。</span></li>
     <li><span class="en"><b>Your compliance review still applies.</b> Read OpenRouter's and TypeSafe's data policies before processing sensitive mail.</span><span class="fr"><b>Votre revue de conformité reste nécessaire.</b> Lisez les politiques de données d'OpenRouter et de TypeSafe avant de traiter du courrier sensible.</span><span class="zh"><b>你的合規審查仍然適用。</b>處理敏感郵件前，請先閱讀 OpenRouter 與 TypeSafe 的資料政策。</span></li>
@@ -410,7 +465,7 @@
   <div class="steps">
     <div class="step">
       <h3><span class="en">Build</span><span class="fr">Compiler</span><span class="zh">建置</span></h3>
-      <p><span class="en">Install the .NET 10 SDK, clone the repository, <code>dotnet build -c Release</code>. One executable, <code>jevoutlook</code>, is both the CLI and the dashboard.</span><span class="fr">Installez le SDK .NET 10, clonez le dépôt, <code>dotnet build -c Release</code>. Un seul exécutable, <code>jevoutlook</code>, sert de CLI et de tableau de bord.</span><span class="zh">安裝 .NET 10 SDK，複製儲存庫，執行 <code>dotnet build -c Release</code>。單一執行檔 <code>jevoutlook</code> 同時是命令列工具與儀表板。</span></p>
+      <p><span class="en">Install the .NET 10 SDK, clone the repository, <code>dotnet build -c Release</code>. One executable, <code>mailclassification</code>, is both the CLI and the dashboard.</span><span class="fr">Installez le SDK .NET 10, clonez le dépôt, <code>dotnet build -c Release</code>. Un seul exécutable, <code>mailclassification</code>, sert de CLI et de tableau de bord.</span><span class="zh">安裝 .NET 10 SDK，複製儲存庫，執行 <code>dotnet build -c Release</code>。單一執行檔 <code>mailclassification</code> 同時是命令列工具與儀表板。</span></p>
     </div>
     <div class="step">
       <h3><span class="en">Connect</span><span class="fr">Connecter</span><span class="zh">連接</span></h3>
@@ -418,7 +473,7 @@
     </div>
     <div class="step">
       <h3><span class="en">Preview ten messages</span><span class="fr">Prévisualiser dix messages</span><span class="zh">預覽十封郵件</span></h3>
-      <p><span class="en"><code>jevoutlook ui</code> or <code>jevoutlook run</code>: ten unread messages, a table of what would happen, about a tenth of a cent. Tune the criteria, then go live.</span><span class="fr"><code>jevoutlook ui</code> ou <code>jevoutlook run</code> : dix messages non lus, un tableau de ce qui se passerait, un dixième de centime environ. Affinez les critères, puis passez en réel.</span><span class="zh"><code>jevoutlook ui</code> 或 <code>jevoutlook run</code>：十封未讀郵件、一張「將會發生什麼」的表格、約千分之一美元。調整判準，再正式執行。</span></p>
+      <p><span class="en"><code>mailclassification ui</code> or <code>mailclassification run</code>: ten unread messages, a table of what would happen, about a tenth of a cent. Tune the criteria, then go live.</span><span class="fr"><code>mailclassification ui</code> ou <code>mailclassification run</code> : dix messages non lus, un tableau de ce qui se passerait, un dixième de centime environ. Affinez les critères, puis passez en réel.</span><span class="zh"><code>mailclassification ui</code> 或 <code>mailclassification run</code>：十封未讀郵件、一張「將會發生什麼」的表格、約千分之一美元。調整判準，再正式執行。</span></p>
     </div>
   </div>
   <figure class="shot shot-wide">
@@ -432,9 +487,9 @@
   <div class="note">
     <span aria-hidden="true">ℹ</span>
     <div>
-      <span class="en"><b>No binary download yet</b> — jevOutlook is built from source with the .NET 10 SDK on macOS, Windows or Linux. The step-by-step guide, including the Entra registration and the "admin approval required" case, is in the README.</span>
-      <span class="fr"><b>Pas encore de binaire à télécharger</b> — jevOutlook se compile depuis les sources avec le SDK .NET 10 sur macOS, Windows ou Linux. Le guide pas à pas, y compris l'inscription Entra et le cas « approbation administrateur requise », est dans le README.</span>
-      <span class="zh"><b>目前沒有可下載的執行檔</b>——jevOutlook 需在 macOS、Windows 或 Linux 上以 .NET 10 SDK 從原始碼建置。逐步指南（含 Entra 註冊與「需要管理員核准」的情況）都在 README 裡。</span>
+      <span class="en"><b>No binary download yet</b> — MailClassification is built from source with the .NET 10 SDK on macOS, Windows or Linux. The step-by-step guide, including the Entra registration and the "admin approval required" case, is in the README.</span>
+      <span class="fr"><b>Pas encore de binaire à télécharger</b> — MailClassification se compile depuis les sources avec le SDK .NET 10 sur macOS, Windows ou Linux. Le guide pas à pas, y compris l'inscription Entra et le cas « approbation administrateur requise », est dans le README.</span>
+      <span class="zh"><b>目前沒有可下載的執行檔</b>——MailClassification 需在 macOS、Windows 或 Linux 上以 .NET 10 SDK 從原始碼建置。逐步指南（含 Entra 註冊與「需要管理員核准」的情況）都在 README 裡。</span>
     </div>
   </div>
 </div></section>
@@ -464,7 +519,7 @@
 </main>
 
 <footer><div class="wrap">
-  jevOutlook · <span class="en">MIT License</span><span class="fr">Licence MIT</span><span class="zh">MIT 授權</span> · © 2026 Vincent Lauriat<br>
+  MailClassification · <span class="en">MIT License</span><span class="fr">Licence MIT</span><span class="zh">MIT 授權</span> · © 2026 Vincent Lauriat<br>
   <a href="https://github.com/vincentlauriat/MailClassification.jev">github.com/vincentlauriat/MailClassification.jev</a>
   · <a href="https://lauriat.fr">lauriat.fr</a>
   · <a href="https://vincentlauriat.github.io">vincentlauriat.github.io</a>

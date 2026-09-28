@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>jevOutlook Outlook add-in — classify the message you are reading with Jev</title>
-<meta name="description" content="The jevOutlook Outlook add-in: a task pane that classifies the message you are reading with Jev (TypeSafe) and applies one Outlook category in a click. Served by the jevOutlook server on your own computer, for Microsoft 365 and Outlook.com mailboxes. Install guide, sideloading per Outlook client, troubleshooting.">
-<meta property="og:title" content="jevOutlook for Outlook — classify the message you are reading">
+<title>MailClassification Outlook add-in — classify the message you are reading with Jev</title>
+<meta name="description" content="The MailClassification Outlook add-in: a task pane that classifies the message you are reading with Jev (TypeSafe) and applies one Outlook category in a click. Served by the MailClassification server on your own computer, for Microsoft 365 and Outlook.com mailboxes. Install guide, sideloading per Outlook client, troubleshooting.">
+<meta property="og:title" content="MailClassification for Outlook — classify the message you are reading">
 <meta property="og:description" content="A task pane in Outlook: Jev picks one of your categories with a confidence, you apply it in one click. Runs on your machine. Free and open source.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://vincentlauriat.github.io/MailClassification.jev/addin/">
@@ -176,6 +176,7 @@
     th,td{padding:10px 8px}
   }
   @media (max-width:360px){
+    .brand .bname{display:none}
     .nav-links .btn-sm{padding:8px 10px}
     .langtog button{padding:7px 6px}
   }</style>
@@ -184,7 +185,7 @@
 <a class="skip" href="#what"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span><span class="zh">跳至內容</span></a>
 
 <nav><div class="wrap">
-  <a class="brand" href="../"><span class="logo">jO</span>jevOutlook<span class="long">&nbsp;· add-in</span></a>
+  <a class="brand" href="../" aria-label="MailClassification add-in"><span class="logo" aria-hidden="true">MC</span><span class="bname">MailClassification</span><span class="long">&nbsp;· add-in</span></a>
   <div class="nav-links">
     <a href="#how"><span class="en">How it works</span><span class="fr">Fonctionnement</span><span class="zh">運作方式</span></a>
     <a href="#install"><span class="en">Install</span><span class="fr">Installer</span><span class="zh">安裝</span></a>
@@ -202,7 +203,7 @@
 <header id="top"><div class="wrap">
   <div class="hero">
     <div>
-      <img class="heroicon" src="../assets/icon-256.png" alt="The jevOutlook icon: a blue envelope with a purple check mark on a dark rounded square">
+      <img class="heroicon" src="../assets/icon-256.png" alt="The MailClassification icon: a blue envelope with a purple check mark on a dark rounded square">
       <span class="pill">◉ <span class="en">Outlook add-in · Microsoft 365 · local</span><span class="fr">Complément Outlook · Microsoft 365 · en local</span><span class="zh">Outlook 增益集 · Microsoft 365 · 本機執行</span></span>
       <h1>
         <span class="en">Classify the message<br><span class="grad">you are reading.</span></span>
@@ -210,22 +211,22 @@
         <span class="zh">為你正在讀的<br><span class="grad">這封郵件分類。</span></span>
       </h1>
       <p class="sub">
-        <span class="en">A task pane inside Outlook. Jev picks one of your categories and tells you how sure it is; you apply it in one click. The pane is served by jevOutlook on your own computer — no cloud service, no extra sign-in.</span>
-        <span class="fr">Un volet dans Outlook. Jev choisit l'une de vos catégories et dit à quel point il en est sûr ; vous l'appliquez d'un clic. Le volet est servi par jevOutlook sur votre propre ordinateur — aucun service cloud, aucune connexion de plus.</span>
-        <span class="zh">Outlook 裡的一個工作窗格。Jev 從你的類別中選出一個，並告訴你它有多確定；你點一下就能套用。窗格由你自己電腦上的 jevOutlook 提供——沒有雲端服務，也不需要額外登入。</span>
+        <span class="en">A task pane inside Outlook. Jev picks one of your categories and tells you how sure it is; you apply it in one click. The pane is served by MailClassification on your own computer — no cloud service, no extra sign-in.</span>
+        <span class="fr">Un volet dans Outlook. Jev choisit l'une de vos catégories et dit à quel point il en est sûr ; vous l'appliquez d'un clic. Le volet est servi par MailClassification sur votre propre ordinateur — aucun service cloud, aucune connexion de plus.</span>
+        <span class="zh">Outlook 裡的一個工作窗格。Jev 從你的類別中選出一個，並告訴你它有多確定；你點一下就能套用。窗格由你自己電腦上的 MailClassification 提供——沒有雲端服務，也不需要額外登入。</span>
       </p>
       <div class="cta">
         <a class="btn btn-primary" href="#install"><span class="en">Install the add-in</span><span class="fr">Installer le complément</span><span class="zh">安裝增益集</span></a>
         <a class="btn btn-ghost" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md"><span class="en">Full guide on GitHub</span><span class="fr">Guide complet sur GitHub</span><span class="zh">在 GitHub 閱讀完整指南</span></a>
       </div>
       <p class="meta">
-        <span class="en">Free &amp; open source (MIT) · part of <a class="inl" href="../">jevOutlook</a></span>
-        <span class="fr">Gratuit et open source (MIT) · fait partie de <a class="inl" href="../">jevOutlook</a></span>
-        <span class="zh">免費開源（MIT）· <a class="inl" href="../">jevOutlook</a> 的一部分</span>
+        <span class="en">Free &amp; open source (MIT) · part of <a class="inl" href="../">MailClassification</a></span>
+        <span class="fr">Gratuit et open source (MIT) · fait partie de <a class="inl" href="../">MailClassification</a></span>
+        <span class="zh">免費開源（MIT）· <a class="inl" href="../">MailClassification</a> 的一部分</span>
       </p>
     </div>
     <figure class="shotfig">
-      <img src="../screenshots/addin-pane-result.png" width="360" height="700" loading="eager" alt="The real jevOutlook task pane, opened in a browser, after Classify with Jev: the label action with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card in preview mode. The account name, subject and sender are replaced with fictitious values.">
+      <img src="../screenshots/addin-pane-result.png" width="360" height="700" loading="eager" alt="The real MailClassification task pane, opened in a browser, after Classify with Jev: the label action with confidence 0.960 from the headers alone, five probability bars, the Apply category and Apply + archive buttons, and the Inbox run card in preview mode. The account name, subject and sender are replaced with fictitious values.">
       <figcaption><span class="en">The real pane, served by the local server (account, subject and sender masked).</span><span class="fr">Le vrai volet, servi par le serveur local (compte, sujet et expéditeur masqués).</span><span class="zh">真實的窗格，由本機伺服器提供（帳號、主旨與寄件者已遮蔽）。</span></figcaption>
     </figure>
   </div>
@@ -237,9 +238,9 @@
   <p class="eyebrow"><span class="en">What it does</span><span class="fr">Ce qu'il fait</span><span class="zh">功能</span></p>
   <h2><span class="en">A Classify button on the reading ribbon</span><span class="fr">Un bouton Classify sur le ruban de lecture</span><span class="zh">閱讀功能區上的 Classify 按鈕</span></h2>
   <p class="lead">
-    <span class="en">Open a message, choose <b>Classify</b> in the <b>jevOutlook</b> group, and a pane opens beside it with two cards.</span>
-    <span class="fr">Ouvrez un message, choisissez <b>Classify</b> dans le groupe <b>jevOutlook</b> : un volet s'ouvre à côté, avec deux cartes.</span>
-    <span class="zh">開啟一封郵件，在 <b>jevOutlook</b> 群組中選擇 <b>Classify</b>，旁邊就會開啟一個含兩張卡片的窗格。</span>
+    <span class="en">Open a message, choose <b>Classify</b> in the <b>MailClassification</b> group, and a pane opens beside it with two cards.</span>
+    <span class="fr">Ouvrez un message, choisissez <b>Classify</b> dans le groupe <b>MailClassification</b> : un volet s'ouvre à côté, avec deux cartes.</span>
+    <span class="zh">開啟一封郵件，在 <b>MailClassification</b> 群組中選擇 <b>Classify</b>，旁邊就會開啟一個含兩張卡片的窗格。</span>
   </p>
   <div class="grid">
     <div class="card">
@@ -268,14 +269,14 @@
     <div class="arrow"><span class="en">loads</span><span class="fr">charge</span><span class="zh">載入</span></div>
     <div class="node me"><b><span class="en">Task pane</span><span class="fr">Volet</span><span class="zh">工作窗格</span></b><span><code>https://localhost:5178</code></span></div>
     <div class="arrow">POST /api</div>
-    <div class="node me"><b>jevoutlook ui</b><span><span class="en">Your Microsoft sign-in and your OpenRouter key, already configured.</span><span class="fr">Votre connexion Microsoft et votre clé OpenRouter, déjà configurées.</span><span class="zh">你已設定好的 Microsoft 登入與 OpenRouter 金鑰。</span></span></div>
+    <div class="node me"><b>mailclassification ui</b><span><span class="en">Your Microsoft sign-in and your OpenRouter key, already configured.</span><span class="fr">Votre connexion Microsoft et votre clé OpenRouter, déjà configurées.</span><span class="zh">你已設定好的 Microsoft 登入與 OpenRouter 金鑰。</span></span></div>
     <div class="arrow">Graph · OpenRouter</div>
     <div class="node"><b><span class="en">Mailbox + Jev</span><span class="fr">Boîte + Jev</span><span class="zh">信箱 + Jev</span></b><span><span class="en">Graph reads and writes the message; Jev decides.</span><span class="fr">Graph lit et écrit le message ; Jev décide.</span><span class="zh">Graph 讀寫郵件；Jev 做判定。</span></span></div>
   </div>
   <p class="boundary"><span class="en">Highlighted: what runs on your computer.</span><span class="fr">En surbrillance : ce qui tourne sur votre ordinateur.</span><span class="zh">醒目標示：在你電腦上執行的部分。</span></p>
   <ul class="bul">
-    <li><span class="en"><b>Served by your own server.</b> <code>jevoutlook ui</code> serves the dashboard on <code>http://127.0.0.1:5177</code> and the pane on <code>https://localhost:5178</code>, with the ASP.NET Core development certificate. If it is not running, Outlook has nothing to load.</span><span class="fr"><b>Servi par votre propre serveur.</b> <code>jevoutlook ui</code> sert le tableau de bord sur <code>http://127.0.0.1:5177</code> et le volet sur <code>https://localhost:5178</code>, avec le certificat de développement ASP.NET Core. S'il ne tourne pas, Outlook n'a rien à charger.</span><span class="zh"><b>由你自己的伺服器提供。</b><code>jevoutlook ui</code> 在 <code>http://127.0.0.1:5177</code> 提供儀表板，並以 ASP.NET Core 開發憑證在 <code>https://localhost:5178</code> 提供窗格。它沒在執行時，Outlook 就沒有東西可載入。</span></li>
-    <li><span class="en"><b>No sign-in of its own.</b> The add-in reuses jevOutlook's Microsoft 365 sign-in and stored key, with the first signed-in Microsoft 365 mailbox. The message is found with <code>convertToRestId</code>, then read through Microsoft Graph.</span><span class="fr"><b>Aucune connexion propre.</b> Le complément réutilise la connexion Microsoft 365 et la clé enregistrée de jevOutlook, avec la première boîte Microsoft 365 connectée. Le message est retrouvé via <code>convertToRestId</code>, puis lu par Microsoft Graph.</span><span class="zh"><b>本身不需登入。</b>增益集沿用 jevOutlook 的 Microsoft 365 登入與已儲存的金鑰，使用第一個已登入的 Microsoft 365 信箱。郵件先以 <code>convertToRestId</code> 定位，再透過 Microsoft Graph 讀取。</span></li>
+    <li><span class="en"><b>Served by your own server.</b> <code>mailclassification ui</code> serves the dashboard on <code>http://127.0.0.1:5177</code> and the pane on <code>https://localhost:5178</code>, with the ASP.NET Core development certificate. If it is not running, Outlook has nothing to load.</span><span class="fr"><b>Servi par votre propre serveur.</b> <code>mailclassification ui</code> sert le tableau de bord sur <code>http://127.0.0.1:5177</code> et le volet sur <code>https://localhost:5178</code>, avec le certificat de développement ASP.NET Core. S'il ne tourne pas, Outlook n'a rien à charger.</span><span class="zh"><b>由你自己的伺服器提供。</b><code>mailclassification ui</code> 在 <code>http://127.0.0.1:5177</code> 提供儀表板，並以 ASP.NET Core 開發憑證在 <code>https://localhost:5178</code> 提供窗格。它沒在執行時，Outlook 就沒有東西可載入。</span></li>
+    <li><span class="en"><b>No sign-in of its own.</b> The add-in reuses MailClassification's Microsoft 365 sign-in and stored key, with the first signed-in Microsoft 365 mailbox. The message is found with <code>convertToRestId</code>, then read through Microsoft Graph.</span><span class="fr"><b>Aucune connexion propre.</b> Le complément réutilise la connexion Microsoft 365 et la clé enregistrée de MailClassification, avec la première boîte Microsoft 365 connectée. Le message est retrouvé via <code>convertToRestId</code>, puis lu par Microsoft Graph.</span><span class="zh"><b>本身不需登入。</b>增益集沿用 MailClassification 的 Microsoft 365 登入與已儲存的金鑰，使用第一個已登入的 Microsoft 365 信箱。郵件先以 <code>convertToRestId</code> 定位，再透過 Microsoft Graph 讀取。</span></li>
     <li><span class="en"><b>Locked to your machine.</b> Loopback only; any other Host header gets 421; the API answers same-origin JSON POST requests only. Email content is shown as text, never as HTML.</span><span class="fr"><b>Verrouillé sur votre machine.</b> Boucle locale seulement ; tout autre en-tête Host reçoit 421 ; l'API ne répond qu'aux requêtes POST JSON de même origine. Le contenu des e-mails est affiché comme texte, jamais comme HTML.</span><span class="zh"><b>鎖定在你的電腦上。</b>只監聽本機回送位址；其他 Host 標頭一律回 421；API 只接受同源的 JSON POST 請求。郵件內容以純文字顯示，絕不當成 HTML。</span></li>
   </ul>
 </div></section>
@@ -294,26 +295,26 @@
 <section id="install"><div class="wrap">
   <p class="eyebrow"><span class="en">Install</span><span class="fr">Installer</span><span class="zh">安裝</span></p>
   <h2><span class="en">Seven steps to a working pane</span><span class="fr">Sept étapes jusqu'au volet</span><span class="zh">七個步驟完成安裝</span></h2>
-  <p class="lead"><span class="en">macOS / Linux syntax. On Windows PowerShell, use <code>$HOME\.jevoutlook\bin</code> for <code>~/.jevoutlook/bin</code>.</span><span class="fr">Syntaxe macOS / Linux. Sous Windows PowerShell, utilisez <code>$HOME\.jevoutlook\bin</code> à la place de <code>~/.jevoutlook/bin</code>.</span><span class="zh">以下為 macOS / Linux 語法。在 Windows PowerShell 中，請把 <code>~/.jevoutlook/bin</code> 換成 <code>$HOME\.jevoutlook\bin</code>。</span></p>
+  <p class="lead"><span class="en">macOS / Linux syntax. On Windows PowerShell, use <code>$HOME\.mailclassification\bin</code> for <code>~/.mailclassification/bin</code>.</span><span class="fr">Syntaxe macOS / Linux. Sous Windows PowerShell, utilisez <code>$HOME\.mailclassification\bin</code> à la place de <code>~/.mailclassification/bin</code>.</span><span class="zh">以下為 macOS / Linux 語法。在 Windows PowerShell 中，請把 <code>~/.mailclassification/bin</code> 換成 <code>$HOME\.mailclassification\bin</code>。</span></p>
   <ol class="install">
     <li>
       <h3><span class="en">Build and publish</span><span class="fr">Compiler et publier</span><span class="zh">建置並發佈</span></h3>
-      <p><span class="en">A stable copy in <code>~/.jevoutlook/bin</code>; put it on your <code>PATH</code>.</span><span class="fr">Une copie stable dans <code>~/.jevoutlook/bin</code> ; ajoutez-la à votre <code>PATH</code>.</span><span class="zh">在 <code>~/.jevoutlook/bin</code> 產生穩定的副本，並加入 <code>PATH</code>。</span></p>
+      <p><span class="en">A stable copy in <code>~/.mailclassification/bin</code>; put it on your <code>PATH</code>.</span><span class="fr">Une copie stable dans <code>~/.mailclassification/bin</code> ; ajoutez-la à votre <code>PATH</code>.</span><span class="zh">在 <code>~/.mailclassification/bin</code> 產生穩定的副本，並加入 <code>PATH</code>。</span></p>
       <div class="code"><pre><code>git clone https://github.com/vincentlauriat/MailClassification.jev.git
 cd MailClassification.jev
-dotnet publish src/JevOutlook -c Release -o ~/.jevoutlook/bin</code></pre></div>
+dotnet publish src/MailClassification -c Release -o ~/.mailclassification/bin</code></pre></div>
     </li>
     <li>
       <h3><span class="en">Store the OpenRouter key</span><span class="fr">Enregistrer la clé OpenRouter</span><span class="zh">儲存 OpenRouter 金鑰</span></h3>
       <p><span class="en">Store it even if your shell exports it: the background service does not see shell variables.</span><span class="fr">Enregistrez-la même si votre shell l'exporte : le service d'arrière-plan ne voit pas les variables du shell.</span><span class="zh">即使 shell 已經匯出也要儲存：背景服務看不到 shell 的環境變數。</span></p>
-      <div class="code"><pre><code>jevoutlook key set sk-or-...
-jevoutlook key test</code></pre></div>
+      <div class="code"><pre><code>mailclassification key set sk-or-...
+mailclassification key test</code></pre></div>
     </li>
     <li>
       <h3><span class="en">Connect the Microsoft 365 mailbox</span><span class="fr">Connecter la boîte Microsoft 365</span><span class="zh">連接 Microsoft 365 信箱</span></h3>
       <p><span class="en">After the one-time <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#62-microsoft-365--outlookcom-mailboxes">Entra app registration</a>; then type the device code that is printed.</span><span class="fr">Après l'<a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#62-microsoft-365--outlookcom-mailboxes">inscription Entra</a> unique ; saisissez ensuite le code affiché.</span><span class="zh">先完成一次性的 <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#62-microsoft-365--outlookcom-mailboxes">Entra 應用程式註冊</a>，再輸入畫面上顯示的裝置代碼。</span></p>
-      <div class="code"><pre><code>jevoutlook config set client-id &lt;application-client-id&gt;
-jevoutlook account add alice@contoso.com --m365</code></pre></div>
+      <div class="code"><pre><code>mailclassification config set client-id &lt;application-client-id&gt;
+mailclassification account add alice@contoso.com --m365</code></pre></div>
     </li>
     <li>
       <h3><span class="en">Trust the development certificate</span><span class="fr">Approuver le certificat de développement</span><span class="zh">信任開發憑證</span></h3>
@@ -322,9 +323,9 @@ jevoutlook account add alice@contoso.com --m365</code></pre></div>
     </li>
     <li>
       <h3><span class="en">Keep the server running</span><span class="fr">Garder le serveur en marche</span><span class="zh">讓伺服器持續執行</span></h3>
-      <p><span class="en">macOS: a LaunchAgent starts it at login; <code>service status</code> should report <code>Health : jevOutlook … answers</code>. Windows / Linux: no <code>service</code> command yet — run <code>jevoutlook ui --no-open</code> and keep it running, for example as a scheduled task at logon.</span><span class="fr">macOS : un LaunchAgent le lance à l'ouverture de session ; <code>service status</code> doit afficher <code>Health : jevOutlook … answers</code>. Windows / Linux : pas encore de commande <code>service</code> — lancez <code>jevoutlook ui --no-open</code> et gardez-le en marche, par exemple via une tâche planifiée à l'ouverture de session.</span><span class="zh">macOS：由 LaunchAgent 在登入時啟動；<code>service status</code> 應顯示 <code>Health : jevOutlook … answers</code>。Windows / Linux：目前還沒有 <code>service</code> 指令——請執行 <code>jevoutlook ui --no-open</code> 並保持執行，例如設成登入時的排程工作。</span></p>
-      <div class="code"><pre><code>jevoutlook service install --exe ~/.jevoutlook/bin/jevoutlook
-jevoutlook service status</code></pre></div>
+      <p><span class="en">macOS: a LaunchAgent starts it at login; <code>service status</code> should report <code>Health : MailClassification … answers</code>. Windows / Linux: no <code>service</code> command yet — run <code>mailclassification ui --no-open</code> and keep it running, for example as a scheduled task at logon.</span><span class="fr">macOS : un LaunchAgent le lance à l'ouverture de session ; <code>service status</code> doit afficher <code>Health : MailClassification … answers</code>. Windows / Linux : pas encore de commande <code>service</code> — lancez <code>mailclassification ui --no-open</code> et gardez-le en marche, par exemple via une tâche planifiée à l'ouverture de session.</span><span class="zh">macOS：由 LaunchAgent 在登入時啟動；<code>service status</code> 應顯示 <code>Health : MailClassification … answers</code>。Windows / Linux：目前還沒有 <code>service</code> 指令——請執行 <code>mailclassification ui --no-open</code> 並保持執行，例如設成登入時的排程工作。</span></p>
+      <div class="code"><pre><code>mailclassification service install --exe ~/.mailclassification/bin/mailclassification
+mailclassification service status</code></pre></div>
     </li>
     <li>
       <h3><span class="en">Check the pane in a browser</span><span class="fr">Vérifier le volet dans un navigateur</span><span class="zh">在瀏覽器中檢查窗格</span></h3>
@@ -332,8 +333,8 @@ jevoutlook service status</code></pre></div>
     </li>
     <li>
       <h3><span class="en">Get the manifest</span><span class="fr">Récupérer le manifeste</span><span class="zh">取得資訊清單</span></h3>
-      <p><span class="en">Download <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>, or write it with the CLI (without <code>--out</code> it goes to <code>release/jevoutlook-manifest.xml</code> under the current directory; <code>--https-port</code> if you changed the port).</span><span class="fr">Téléchargez <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>, ou écrivez-le avec la CLI (sans <code>--out</code>, il va dans <code>release/jevoutlook-manifest.xml</code> sous le répertoire courant ; <code>--https-port</code> si vous avez changé le port).</span><span class="zh">下載 <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>，或用命令列產生（沒有 <code>--out</code> 時會寫到目前目錄下的 <code>release/jevoutlook-manifest.xml</code>；若改過連接埠請加 <code>--https-port</code>）。</span></p>
-      <div class="code"><pre><code>jevoutlook addin manifest --out ~/jevoutlook-manifest.xml</code></pre></div>
+      <p><span class="en">Download <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>, or write it with the CLI (without <code>--out</code> it goes to <code>release/mailclassification-manifest.xml</code> under the current directory; <code>--https-port</code> if you changed the port).</span><span class="fr">Téléchargez <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>, ou écrivez-le avec la CLI (sans <code>--out</code>, il va dans <code>release/mailclassification-manifest.xml</code> sous le répertoire courant ; <code>--https-port</code> si vous avez changé le port).</span><span class="zh">下載 <a class="inl" href="https://localhost:5178/manifest.xml">https://localhost:5178/manifest.xml</a>，或用命令列產生（沒有 <code>--out</code> 時會寫到目前目錄下的 <code>release/mailclassification-manifest.xml</code>；若改過連接埠請加 <code>--https-port</code>）。</span></p>
+      <div class="code"><pre><code>mailclassification addin manifest --out ~/mailclassification-manifest.xml</code></pre></div>
     </li>
   </ol>
 </div></section>
@@ -353,9 +354,17 @@ jevoutlook service status</code></pre></div>
   <div class="note">
     <span aria-hidden="true">ℹ</span>
     <div>
-      <span class="en"><b>First use:</b> open a message → the <b>jevOutlook</b> group on the ribbon (or under <b>…</b> / <b>Apps</b>) → <b>Classify</b> → <b>Classify with Jev</b>. Keep <b>Preview only</b> ticked for your first Inbox runs.</span>
-      <span class="fr"><b>Première utilisation :</b> ouvrez un message → le groupe <b>jevOutlook</b> du ruban (ou sous <b>…</b> / <b>Apps</b>) → <b>Classify</b> → <b>Classify with Jev</b>. Laissez <b>Preview only</b> coché pour vos premiers traitements de la boîte.</span>
-      <span class="zh"><b>第一次使用：</b>開啟郵件 → 功能區上的 <b>jevOutlook</b> 群組（或在 <b>…</b> / <b>Apps</b> 之下）→ <b>Classify</b> → <b>Classify with Jev</b>。前幾次收件匣批次處理請保持勾選 <b>Preview only</b>。</span>
+      <span class="en"><b>First use:</b> open a message → the <b>MailClassification</b> group on the ribbon (or under <b>…</b> / <b>Apps</b>) → <b>Classify</b> → <b>Classify with Jev</b>. Keep <b>Preview only</b> ticked for your first Inbox runs.</span>
+      <span class="fr"><b>Première utilisation :</b> ouvrez un message → le groupe <b>MailClassification</b> du ruban (ou sous <b>…</b> / <b>Apps</b>) → <b>Classify</b> → <b>Classify with Jev</b>. Laissez <b>Preview only</b> coché pour vos premiers traitements de la boîte.</span>
+      <span class="zh"><b>第一次使用：</b>開啟郵件 → 功能區上的 <b>MailClassification</b> 群組（或在 <b>…</b> / <b>Apps</b> 之下）→ <b>Classify</b> → <b>Classify with Jev</b>。前幾次收件匣批次處理請保持勾選 <b>Preview only</b>。</span>
+    </div>
+  </div>
+  <div class="note">
+    <span aria-hidden="true">↻</span>
+    <div>
+      <span class="en"><b>Upgrading from jevOutlook:</b> the add-in was called jevOutlook until 2026-09-28. Your settings move to <code>~/.mailclassification</code> on their own. Run <code>mailclassification service install</code> once (it replaces the old agent), generate the manifest again and sideload it once more to see the new name; the add-in id is the same. <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#upgrading-from-jevoutlook">Upgrade notes</a>.</span>
+      <span class="fr"><b>Mise à jour depuis jevOutlook :</b> le complément s'appelait jevOutlook jusqu'au 2026-09-28. Vos réglages passent seuls dans <code>~/.mailclassification</code>. Lancez une fois <code>mailclassification service install</code> (il remplace l'ancien agent), régénérez le manifeste et rechargez-le pour voir le nouveau nom ; l'id du complément ne change pas. <a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#upgrading-from-jevoutlook">Notes de mise à jour</a>.</span>
+      <span class="zh"><b>從 jevOutlook 升級：</b>此增益集在 2026-09-28 之前名為 jevOutlook。你的設定會自動移到 <code>~/.mailclassification</code>。請執行一次 <code>mailclassification service install</code>（會取代舊的代理程式），重新產生資訊清單並再次側載，即可看到新名稱；增益集 id 不變。<a class="inl" href="https://github.com/vincentlauriat/MailClassification.jev#upgrading-from-jevoutlook">升級說明</a>。</span>
     </div>
   </div>
 </div></section>
@@ -366,10 +375,10 @@ jevoutlook service status</code></pre></div>
   <div class="tw"><table>
     <thead><tr><th><span class="en">Symptom</span><span class="fr">Symptôme</span><span class="zh">症狀</span></th><th><span class="en">Fix</span><span class="fr">Solution</span><span class="zh">解法</span></th></tr></thead>
     <tbody>
-      <tr><td><span class="en">Blank pane / can't reach</span><span class="fr">Volet vide / injoignable</span><span class="zh">窗格空白／無法連線</span></td><td><span class="en">The server is not running. <code>jevoutlook service status</code>, then <code>service restart</code>; read <code>~/.jevoutlook/logs/ui.log</code>.</span><span class="fr">Le serveur ne tourne pas. <code>jevoutlook service status</code>, puis <code>service restart</code> ; lisez <code>~/.jevoutlook/logs/ui.log</code>.</span><span class="zh">伺服器沒有執行。執行 <code>jevoutlook service status</code>，再 <code>service restart</code>；查看 <code>~/.jevoutlook/logs/ui.log</code>。</span></td></tr>
+      <tr><td><span class="en">Blank pane / can't reach</span><span class="fr">Volet vide / injoignable</span><span class="zh">窗格空白／無法連線</span></td><td><span class="en">The server is not running. <code>mailclassification service status</code>, then <code>service restart</code>; read <code>~/.mailclassification/logs/ui.log</code>.</span><span class="fr">Le serveur ne tourne pas. <code>mailclassification service status</code>, puis <code>service restart</code> ; lisez <code>~/.mailclassification/logs/ui.log</code>.</span><span class="zh">伺服器沒有執行。執行 <code>mailclassification service status</code>，再 <code>service restart</code>；查看 <code>~/.mailclassification/logs/ui.log</code>。</span></td></tr>
       <tr><td><span class="en">Certificate warning</span><span class="fr">Avertissement de certificat</span><span class="zh">憑證警告</span></td><td><span class="en"><code>dotnet dev-certs https --trust</code>, then restart the server. Without a certificate the server falls back to HTTP only and the pane cannot load.</span><span class="fr"><code>dotnet dev-certs https --trust</code>, puis redémarrez le serveur. Sans certificat, le serveur se replie sur HTTP seul et le volet ne peut pas se charger.</span><span class="zh">執行 <code>dotnet dev-certs https --trust</code>，再重新啟動伺服器。沒有憑證時伺服器只會以 HTTP 執行，窗格無法載入。</span></td></tr>
-      <tr><td><span class="en">"Not signed in — use the dashboard"</span><span class="fr">« Not signed in — use the dashboard »</span><span class="zh">「Not signed in — use the dashboard」</span></td><td><span class="en">The Microsoft sign-in expired: <code>jevoutlook account login &lt;id&gt;</code>.</span><span class="fr">La connexion Microsoft a expiré : <code>jevoutlook account login &lt;id&gt;</code>.</span><span class="zh">Microsoft 登入已過期：<code>jevoutlook account login &lt;id&gt;</code>。</span></td></tr>
-      <tr><td><span class="en">"· no API key"</span><span class="fr">« · no API key »</span><span class="zh">「· no API key」</span></td><td><span class="en"><code>jevoutlook key set &lt;key&gt;</code> — the service does not see a key exported only in your shell.</span><span class="fr"><code>jevoutlook key set &lt;clé&gt;</code> — le service ne voit pas une clé exportée seulement dans votre shell.</span><span class="zh"><code>jevoutlook key set &lt;金鑰&gt;</code>——服務看不到只在 shell 中匯出的金鑰。</span></td></tr>
+      <tr><td><span class="en">"Not signed in — use the dashboard"</span><span class="fr">« Not signed in — use the dashboard »</span><span class="zh">「Not signed in — use the dashboard」</span></td><td><span class="en">The Microsoft sign-in expired: <code>mailclassification account login &lt;id&gt;</code>.</span><span class="fr">La connexion Microsoft a expiré : <code>mailclassification account login &lt;id&gt;</code>.</span><span class="zh">Microsoft 登入已過期：<code>mailclassification account login &lt;id&gt;</code>。</span></td></tr>
+      <tr><td><span class="en">"· no API key"</span><span class="fr">« · no API key »</span><span class="zh">「· no API key」</span></td><td><span class="en"><code>mailclassification key set &lt;key&gt;</code> — the service does not see a key exported only in your shell.</span><span class="fr"><code>mailclassification key set &lt;clé&gt;</code> — le service ne voit pas une clé exportée seulement dans votre shell.</span><span class="zh"><code>mailclassification key set &lt;金鑰&gt;</code>——服務看不到只在 shell 中匯出的金鑰。</span></td></tr>
       <tr><td><span class="en">"Add-in installation failed"</span><span class="fr">« Add-in installation failed »</span><span class="zh">「Add-in installation failed」</span></td><td><span class="en">Custom add-ins are disabled by your organisation's policy. Only a tenant administrator can change it.</span><span class="fr">Les compléments personnalisés sont désactivés par la politique de votre organisation. Seul un administrateur du tenant peut la changer.</span><span class="zh">你的組織政策停用了自訂增益集。只有租用戶管理員能變更。</span></td></tr>
     </tbody>
   </table></div>
@@ -389,14 +398,14 @@ jevoutlook service status</code></pre></div>
   </div>
   <div class="cta" style="margin-top:28px">
     <a class="btn btn-primary" href="https://github.com/vincentlauriat/MailClassification.jev/blob/main/docs/ADDIN.md"><span class="en">Read the full add-in guide</span><span class="fr">Lire le guide complet du complément</span><span class="zh">閱讀完整的增益集指南</span></a>
-    <a class="btn btn-ghost" href="../"><span class="en">Back to jevOutlook</span><span class="fr">Retour à jevOutlook</span><span class="zh">回到 jevOutlook</span></a>
+    <a class="btn btn-ghost" href="../"><span class="en">Back to MailClassification</span><span class="fr">Retour à MailClassification</span><span class="zh">回到 MailClassification</span></a>
   </div>
 </div></section>
 
 </main>
 
 <footer><div class="wrap">
-  jevOutlook · <span class="en">MIT License</span><span class="fr">Licence MIT</span><span class="zh">MIT 授權</span> · © 2026 Vincent Lauriat<br>
+  MailClassification · <span class="en">MIT License</span><span class="fr">Licence MIT</span><span class="zh">MIT 授權</span> · © 2026 Vincent Lauriat<br>
   <a href="https://github.com/vincentlauriat/MailClassification.jev">github.com/vincentlauriat/MailClassification.jev</a>
   · <a href="https://lauriat.fr">lauriat.fr</a>
   · <a href="https://vincentlauriat.github.io">vincentlauriat.github.io</a>

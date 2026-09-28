@@ -1,6 +1,6 @@
 # Third-party notices
 
-jevOutlook is released under the MIT License (see `LICENSE`). It builds on the
+MailClassification is released under the MIT License (see `LICENSE`). It builds on the
 following work, reproduced or depended upon under their own licenses.
 
 ## jevMail — Jev Gmail AI spam filter and labeling (MIT)
@@ -9,7 +9,7 @@ following work, reproduced or depended upon under their own licenses.
 
 The classification policy (two stages, thresholds, budget accounting, failure
 policy), the seven category playbooks and the layout and stylesheet of the
-dashboard (`src/JevOutlook/Web/wwwroot/index.html`, `style.css`) are adapted
+dashboard (`src/MailClassification/Web/wwwroot/index.html`, `style.css`) are adapted
 from jevMail by Ilia AGI. Copyright (c) the jevMail authors. Licensed under the
 MIT License; the permission notice above applies to those portions as well.
 
