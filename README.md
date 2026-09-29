@@ -27,7 +27,7 @@ The add-in (Microsoft 365 and Outlook.com mailboxes) has its own guide:
 sideloading it into a real Outlook client has not yet been validated end to end.
 
 <p align="center">
-  <img src="docs/screenshots/dashboard-run.png" alt="The MailClassification dashboard after a live run: 100 of 100 messages reviewed, $0.009 of API cost, the count of messages per category" width="820">
+  <img src="docs/screenshots/dashboard-run.png" alt="The MailClassification dashboard during a large live run: 725 of 1000 messages reviewed, stopped at the $0.10 cost limit after $0.0946 of API cost, and the count of messages per category" width="820">
 </p>
 
 > **Where it comes from.** MailClassification started as the Microsoft-platform port of
